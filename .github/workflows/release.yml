@@ -6,7 +6,7 @@ on:
 
 jobs:
   build:
-    runs-on: ubuntu-latest  # 或者 windows-latest, macos-latest，具体看需求
+    runs-on: macos-latest  # 或者 windows-latest, macos-latest，具体看需求
 
     steps:
       - name: Checkout code
@@ -26,29 +26,9 @@ jobs:
       - name: Build Electron App
         run: npm run build  # 使用 electron-builder 打包
 
-      - name: Upload macOS build
-        if: runner.os == 'macOS'
-        uses: actions/upload-release-asset@v1
-        with:
-          upload_url: ${{ github.event.release.upload_url }}
-          asset_path: dist/*.dmg
-          asset_name: your-app-mac.dmg
-          asset_content_type: application/x-apple-diskimage
-
-      - name: Upload Windows build
-        if: runner.os == 'Windows'
-        uses: actions/upload-release-asset@v1
-        with:
-          upload_url: ${{ github.event.release.upload_url }}
-          asset_path: dist/*.exe
-          asset_name: your-app-windows.exe
-          asset_content_type: application/x-msdownload
-
-      - name: Upload Linux build
-        if: runner.os == 'Linux'
-        uses: actions/upload-release-asset@v1
-        with:
-          upload_url: ${{ github.event.release.upload_url }}
-          asset_path: dist/*.AppImage
-          asset_name: your-app-linux.AppImage
-          asset_content_type: application/vnd.appimage
+          
+      - name: Publish to GitHub Releases
+        run: |
+          npx electron-builder --publish always
+        env:
+          GH_TOKEN: ${{ secrets.GH_TOKEN }}  # 使用 GitHub secret 中配置的 GH_TOKEN
