@@ -1,0 +1,54 @@
+name: Build and Release Electron App
+
+on:
+  release:
+    types: [created]  # 仅在创建 release 时触发
+
+jobs:
+  build:
+    runs-on: ubuntu-latest  # 或者 windows-latest, macos-latest，具体看需求
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v2
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v2
+        with:
+          node-version: '22'
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Install electron-builder
+        run: npm install electron-builder --save-dev
+
+      - name: Build Electron App
+        run: npm run build  # 使用 electron-builder 打包
+
+      - name: Upload macOS build
+        if: runner.os == 'macOS'
+        uses: actions/upload-release-asset@v1
+        with:
+          upload_url: ${{ github.event.release.upload_url }}
+          asset_path: dist/*.dmg
+          asset_name: your-app-mac.dmg
+          asset_content_type: application/x-apple-diskimage
+
+      - name: Upload Windows build
+        if: runner.os == 'Windows'
+        uses: actions/upload-release-asset@v1
+        with:
+          upload_url: ${{ github.event.release.upload_url }}
+          asset_path: dist/*.exe
+          asset_name: your-app-windows.exe
+          asset_content_type: application/x-msdownload
+
+      - name: Upload Linux build
+        if: runner.os == 'Linux'
+        uses: actions/upload-release-asset@v1
+        with:
+          upload_url: ${{ github.event.release.upload_url }}
+          asset_path: dist/*.AppImage
+          asset_name: your-app-linux.AppImage
+          asset_content_type: application/vnd.appimage
