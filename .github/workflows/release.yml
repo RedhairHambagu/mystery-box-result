@@ -1,34 +1,27 @@
-name: Build and Release Electron App
-
-on:
-  release:
-    types: [created]  # 仅在创建 release 时触发
-
 jobs:
   build:
-    runs-on: macos-latest  # 或者 windows-latest, macos-latest，具体看需求
-
+    runs-on: ubuntu-latest
+    
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v2
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v2
-        with:
-          node-version: '22'
-
-      - name: Install dependencies
-        run: npm install
-
-      - name: Install electron-builder
-        run: npm install electron-builder --save-dev
-
-      - name: Build Electron App
-        run: npm run build  # 使用 electron-builder 打包
-
-          
-      - name: Publish to GitHub Releases
-        run: |
-          npx electron-builder --publish always
-        env:
-          GH_TOKEN: ${{ secrets.GH_TOKEN }}  # 使用 GitHub secret 中配置的 GH_TOKEN
+    - name: Checkout code
+      uses: actions/checkout@v2
+    
+    - name: Setup Node.js
+      uses: actions/setup-node@v2
+      with:
+        node-version: '16'
+    
+    - name: Install dependencies
+      run: npm install
+      
+    - name: Install electron-builder
+      run: npm install electron-builder --save-dev
+    
+    - name: Build Electron App
+      run: npm run build
+     
+    - name: Publish to GitHub Releases
+      run: |
+        npx electron-builder --publish always
+      env:
+        GH_TOKEN: ${{ secrets.GH_TOKEN }}  # 使用 GitHub secret 中配置的 GH_TOKEN
