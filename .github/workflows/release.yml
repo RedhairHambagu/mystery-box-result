@@ -29,5 +29,6 @@ jobs:
             - name: Publish to GitHub Releases
               run: |
                 npx electron-builder --publish always
-              env:
-                GH_TOKEN: ${{ secrets.GH_TOKEN }}  # 使用 GitHub secret 中配置的 GH_TOKEN
+            - name: Create Release
+              with:
+                token: ${{ secrets.GITHUB_TOKEN }}
