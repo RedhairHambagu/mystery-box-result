@@ -1,0 +1,20 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>盲盒工具</title>
+</head>
+<body>
+    <h1>盲盒记录查询</h1>
+    <div> 1. 登录 </br>2. 点击盲盒按钮 出现“获取到 Item 信息；点击下一页”按钮后，再点击下一页才出现结果</br>3. 如果抽的盲盒次数多，在没有出现新的盲盒前，统计结果可能不全，请点击下一页 </br>4. 若未出现“获取到 Item 信息；点击下一页”，再次点击打开盲盒界面即可</div>
+    <button id="login-button">登录</button>
+    <!-- <div id="cookie-info"></div> -->
+    <button id="open-mystery-box">打开盲盒界面</button>
+    <button id="fetch-items-button" style="display:none;">获取到 Item 信息；点击下一页</button> <!-- 新增按钮 -->
+    
+    <div id="item-selection-container"></div> <!-- 显示 Item ID 供用户选择的容器 -->
+    <div id="item-container"></div> <!-- 显示 Item 信息的容器 -->
+    <div id="count-container"></div> <!-- 显示计数信息的容器 -->
+    
+    <script src="renderer.js"></script>
+</body>
+</html>

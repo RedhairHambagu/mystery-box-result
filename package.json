@@ -1,0 +1,45 @@
+{
+    "name": "mystery-box-result",
+    "version": "1.0.0",
+    "main": "main.js",
+    "scripts": {
+        "start": "electron .",
+        "build": "electron-builder"
+    },
+    "dependencies": {
+        "electron-store": "^10.0.0",
+        "yarn": "^1.22.22"
+    },
+    "build": {
+        "appId": "com.mysteryboxresult.app",
+        "productName": "mystery-box-result",
+        "directories": {
+            "output": "dist"
+        },
+        "files": [
+            "main.js",
+            "renderer.js",
+            "index.html",
+            "node_modules/**/*"
+        ],
+       "win": {
+         "target": [
+           {
+             "target": "portable",
+             "arch": ["x64", "ia32"]
+           }
+         ]
+       },
+        "mac": {
+            "target": "dmg",
+            "identity": null
+        },
+        "linux": {
+            "target": "AppImage"
+        }
+    },
+    "devDependencies": {
+        "electron": "^32.1.2",
+        "electron-builder": "^25.1.7"
+    }
+}
