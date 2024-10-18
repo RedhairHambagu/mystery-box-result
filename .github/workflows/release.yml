@@ -3,38 +3,43 @@ name: Build and Release Electron App
 on:
   release:
     types: [created]  # 仅在创建 release 时触发
-    
+
 jobs:
-    build:
-        runs-on: ubuntu-latest
-        
-        steps:
-            - name: Checkout code
-              uses: actions/checkout@v2
-            
-            - name: Setup Node.js
-              uses: actions/setup-node@v2
-              with:
-                node-version: '16'
-            
-            - name: Install dependencies
-              run: npm install
-            
-            - name: Install electron-builder
-              run: npm install electron-builder --save-dev
-            
-            - name: Build Electron App
-              run: npm run build
-            
-            - name: Publish to GitHub Releases
-              run: |
-                npx electron-builder --publish always
-              env:
-                GH_TOKEN: ${{ secrets.GH_TOKEN }}
-      
-            - name: Create GitHub Release
-              uses: softprops/action-gh-release@v1  # 使用 gh-release action
-              with:
-                body: 'Release description'
-              env:
-                GITHUB_TOKEN: ${{ secrets.GH_TOKEN }}  # 使用你的 GitHub PAT token
+  build:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v2
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v2
+        with:
+          node-version: '16'
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Install electron-builder
+        run: npm install electron-builder --save-dev
+
+      - name: Build Electron App
+        run: npm run build
+
+      - name: Debug GH_TOKEN
+        run: echo "GH_TOKEN is set"
+        env:
+          GH_TOKEN: ${{ secrets.GH_TOKEN }}
+
+      - name: Publish to GitHub Releases
+        run: |
+          npx electron-builder --publish always
+        env:
+          GH_TOKEN: ${{ secrets.GH_TOKEN }}
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v1
+        with:
+          body: 'Release description'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GH_TOKEN }}
