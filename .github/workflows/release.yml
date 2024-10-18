@@ -2,9 +2,8 @@ name: Build and Release Electron App
 
 on:
   push:
-    branches: main
-    tags: "*"
-    
+    tags:
+      - 'v*'  # 仅在以 "v" 开头的 tag 被推送时触发
 
 jobs:
   build:
@@ -34,12 +33,6 @@ jobs:
         run: |
           GH_TOKEN=${{ secrets.GH_TOKEN }} npm run build
 
-
-      - name: Debug GH_TOKEN
-        run: echo "GH_TOKEN is set"
-        env:
-          GH_TOKEN: ${{ secrets.GH_TOKEN }}
-
       - name: Publish to GitHub Releases
         run: |
           npx electron-builder --publish always
@@ -49,6 +42,7 @@ jobs:
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v1
         with:
+          tag_name: ${{ github.ref }}  # 使用当前的 tag 作为发布的 tag
           body: 'Release description'
         env:
-          GITHUB_TOKEN: ${{ secrets.GH_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
