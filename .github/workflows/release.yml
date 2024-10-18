@@ -24,6 +24,10 @@ jobs:
       - name: Install electron-builder
         run: npm install electron-builder --save-dev
 
+      - name: Install dmg-license
+        run: npm install dmg-license --save-dev
+      
+
       - name: Build Electron App
         run: |
           GH_TOKEN=${{ secrets.GH_TOKEN }} npx electron-builder --win --mac --linux
