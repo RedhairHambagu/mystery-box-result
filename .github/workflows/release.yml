@@ -96,14 +96,14 @@ jobs:
 
       - name: Build Electron App for Windows
         run: |
-          GH_TOKEN=${{ secrets.GH_TOKEN }}  npx electron-builder --win
+          set GH_TOKEN=${{ secrets.GH_TOKEN }} && npx electron-builder --win
 
       - name: List Build Artifacts
-        run: ls -la dist  # 检查构建输出
+        run: dir dist  # 检查构建输出
 
       - name: Publish to GitHub Releases
         run: |
-          npx electron-builder --publish onTag
+          set GH_TOKEN=${{ secrets.GH_TOKEN }} && npx electron-builder --publish onTag
         env:
           GH_TOKEN: ${{ secrets.GH_TOKEN }}
 
