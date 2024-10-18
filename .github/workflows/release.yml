@@ -24,13 +24,13 @@ jobs:
       - name: Install electron-builder
         run: npm install electron-builder --save-dev
 
-      - name: Install dmg-license
+      - name: Install dmg-license (only on macOS)
+        if: runner.os == 'macOS'  # 仅在 macOS 上运行
         run: npm install dmg-license --save-dev
-      
 
       - name: Build Electron App
         run: |
-          GH_TOKEN=${{ secrets.GH_TOKEN }} npx electron-builder --win --mac --linux
+          GH_TOKEN=${{ secrets.GH_TOKEN }} npx electron-builder --win --mac --linux --no-verify
 
       - name: List Build Artifacts
         run: ls -la dist  # 检查构建输出
