@@ -6,9 +6,8 @@ on:
       - 'v*'  # 仅在以 "v" 开头的 tag 被推送时触发
 
 jobs:
-  build:
+  build-linux:
     runs-on: ubuntu-latest
-    
     steps:
       - name: Checkout code
         uses: actions/checkout@v2
@@ -21,23 +20,16 @@ jobs:
       - name: Install dependencies
         run: npm install
 
-      - name: Install electron-builder
-        run: npm install electron-builder --save-dev
-
-      - name: Install dmg-license (only on macOS)
-        if: runner.os == 'macOS'  # 仅在 macOS 上运行
-        run: npm install dmg-license --save-dev
-
-      - name: Build Electron App
+      - name: Build Electron App for Linux
         run: |
-          GH_TOKEN=${{ secrets.GH_TOKEN }} npx electron-builder --win --mac --linux --no-verify
+         GH_TOKEN=${{ secrets.GH_TOKEN }}  npx electron-builder --linux
 
       - name: List Build Artifacts
         run: ls -la dist  # 检查构建输出
 
       - name: Publish to GitHub Releases
         run: |
-          npx electron-builder --publish onTag 
+          npx electron-builder --publish onTag
         env:
           GH_TOKEN: ${{ secrets.GH_TOKEN }}
 
@@ -47,7 +39,80 @@ jobs:
           tag_name: ${{ github.ref_name }}  # 使用当前的 tag 作为发布的 tag
           body: 'Release description'
           files: |
-            dist/mystery-box-result**  # 上传 dist 目录下的所有文件
+            dist/mystery-box-result**  # 上传 dist 目录下的文件
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
+  build-mac:
+    runs-on: macos-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v2
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v2
+        with:
+          node-version: '22'
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Build Electron App for macOS
+        run: |
+          GH_TOKEN=${{ secrets.GH_TOKEN }} npx electron-builder --mac
+
+      - name: List Build Artifacts
+        run: ls -la dist  # 检查构建输出
+
+      - name: Publish to GitHub Releases
+        run: |
+          npx electron-builder --publish onTag
+        env:
+          GH_TOKEN: ${{ secrets.GH_TOKEN }}
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: ${{ github.ref_name }}  # 使用当前的 tag 作为发布的 tag
+          body: 'Release description'
+          files: |
+            dist/mystery-box-result**  # 上传 dist 目录下的文件
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  build-win:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v2
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v2
+        with:
+          node-version: '22'
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Build Electron App for Windows
+        run: |
+          GH_TOKEN=${{ secrets.GH_TOKEN }}  npx electron-builder --win
+
+      - name: List Build Artifacts
+        run: ls -la dist  # 检查构建输出
+
+      - name: Publish to GitHub Releases
+        run: |
+          npx electron-builder --publish onTag
+        env:
+          GH_TOKEN: ${{ secrets.GH_TOKEN }}
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: ${{ github.ref_name }}  # 使用当前的 tag 作为发布的 tag
+          body: 'Release description'
+          files: |
+            dist/mystery-box-result**  # 上传 dist 目录下的文件
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
