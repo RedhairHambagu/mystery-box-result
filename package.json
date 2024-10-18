@@ -25,19 +25,16 @@
        "win": {
          "target": [
            {
-             "target": "portable",
-             "arch": ["x64", "ia32"]
+             "target": "portable"
            }
          ]
        },
         "mac": {
             "target": "dmg",
-            "arch": ["x64", "arm64"],
             "identity": null
         },
         "linux": {
-            "target": "AppImage",
-            "arch": ["x64", "ia32"]
+            "target": "AppImage"
         }
     },
     "devDependencies": {
