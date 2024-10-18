@@ -33,15 +33,6 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GH_TOKEN }}
 
-      - name: Create GitHub Release
-        uses: softprops/action-gh-release@v1
-        with:
-          tag_name: ${{ github.ref_name }}  # 使用当前的 tag 作为发布的 tag
-          body: 'Release description'
-          files: |
-            dist/mystery-box-result**  # 上传 dist 目录下的文件
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
   build-mac:
     runs-on: macos-latest
@@ -59,26 +50,11 @@ jobs:
 
       - name: Build Electron App for macOS
         run: |
-          GH_TOKEN=${{ secrets.GH_TOKEN }} npx electron-builder --mac
+          GH_TOKEN=${{ secrets.GH_TOKEN }} npx electron-builder --mac  --publish onTag
 
       - name: List Build Artifacts
         run: ls -la dist  # 检查构建输出
 
-      - name: Publish to GitHub Releases
-        run: |
-          npx electron-builder --publish onTag
-        env:
-          GH_TOKEN: ${{ secrets.GH_TOKEN }}
-
-      - name: Create GitHub Release
-        uses: softprops/action-gh-release@v1
-        with:
-          tag_name: ${{ github.ref_name }}  # 使用当前的 tag 作为发布的 tag
-          body: 'Release description'
-          files: |
-            dist/mystery-box-result**  # 上传 dist 目录下的文件
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
   build-win:
     runs-on: windows-latest
@@ -96,23 +72,7 @@ jobs:
 
       - name: Build Electron App for Windows
         run: |
-          set GH_TOKEN=${{ secrets.GH_TOKEN }} && npx electron-builder --win
+          set GH_TOKEN=${{ secrets.GH_TOKEN }} && npx electron-builder --win --publish onTag
 
       - name: List Build Artifacts
         run: dir dist  # 检查构建输出
-
-      - name: Publish to GitHub Releases
-        run: |
-          set GH_TOKEN=${{ secrets.GH_TOKEN }} && npx electron-builder --publish onTag
-        env:
-          GH_TOKEN: ${{ secrets.GH_TOKEN }}
-
-      - name: Create GitHub Release
-        uses: softprops/action-gh-release@v1
-        with:
-          tag_name: ${{ github.ref_name }}  # 使用当前的 tag 作为发布的 tag
-          body: 'Release description'
-          files: |
-            dist/mystery-box-result**  # 上传 dist 目录下的文件
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
