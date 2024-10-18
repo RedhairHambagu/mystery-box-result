@@ -1,0 +1,70 @@
+name: Build Electron App
+
+on:
+  push:
+    tags:
+      - 'v*'  # 仅在以 "v" 开头的 tag 被推送时触发
+
+jobs:
+  build-linux:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v2
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v2
+        with:
+          node-version: '22'
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Build Electron App for Linux
+        run: |
+          GH_TOKEN=${{ secrets.GH_TOKEN }} npx electron-builder --linux
+
+      - name: List Build Artifacts
+        run: ls -la dist  # 检查构建输出
+
+  build-mac:
+    runs-on: macos-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v2
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v2
+        with:
+          node-version: '22'
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Build Electron App for macOS
+        run: |
+          GH_TOKEN=${{ secrets.GH_TOKEN }} npx electron-builder --mac
+
+      - name: List Build Artifacts
+        run: ls -la dist  # 检查构建输出
+
+  build-win:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v2
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v2
+        with:
+          node-version: '22'
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Build Electron App for Windows
+        run: |
+          set GH_TOKEN=${{ secrets.GH_TOKEN }} && npx electron-builder --win
+
+      - name: List Build Artifacts
+        run: dir dist  # 检查构建输出
