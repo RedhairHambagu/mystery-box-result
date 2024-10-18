@@ -1,8 +1,10 @@
 name: Build and Release Electron App
 
 on:
-  release:
-    types: [created]  # 仅在创建 release 时触发
+  push:
+    branches: main
+    tags: "*"
+    
 
 jobs:
   build:
