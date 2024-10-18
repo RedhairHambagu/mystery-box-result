@@ -28,6 +28,9 @@ jobs:
         run: |
           GH_TOKEN=${{ secrets.GH_TOKEN }} npm run build
 
+      - name: List Build Artifacts
+        run: ls -la dist  # 检查构建输出
+
       - name: Publish to GitHub Releases
         run: |
           npx electron-builder --publish always
