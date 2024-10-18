@@ -26,6 +26,11 @@ jobs:
 
       - name: List Build Artifacts
         run: ls -la dist  # 检查构建输出
+      
+      - name: Clean up build artifacts
+        run: |
+          rm -f dist/*.yml
+          rm -f dist/*.blockmap   
 
   build-mac:
     runs-on: macos-latest
@@ -47,6 +52,11 @@ jobs:
 
       - name: List Build Artifacts
         run: ls -la dist  # 检查构建输出
+      
+      - name: Clean up build artifacts
+        run: |
+          rm -f dist/*.yml
+          rm -f dist/*.blockmap
 
   build-win:
     runs-on: windows-latest
