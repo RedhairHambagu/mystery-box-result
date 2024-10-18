@@ -29,6 +29,12 @@ jobs:
             - name: Publish to GitHub Releases
               run: |
                 npx electron-builder --publish always
-            - name: Create Release
+              env:
+                GH_TOKEN: ${{ secrets.GH_TOKEN }}
+      
+            - name: Create GitHub Release
+              uses: softprops/action-gh-release@v1  # 使用 gh-release action
               with:
-                token: ${{ secrets.GITHUB_TOKEN }}
+                body: 'Release description'
+              env:
+                GITHUB_TOKEN: ${{ secrets.GH_TOKEN }}  # 使用你的 GitHub PAT token
