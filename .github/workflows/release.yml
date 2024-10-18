@@ -26,24 +26,24 @@ jobs:
 
       - name: Build Electron App
         run: |
-          GH_TOKEN=${{ secrets.GH_TOKEN }} npm run build
+          GH_TOKEN=${{ secrets.GH_TOKEN }} npx electron-builder --win --mac --linux
 
       - name: List Build Artifacts
         run: ls -la dist  # 检查构建输出
 
       - name: Publish to GitHub Releases
         run: |
-          npx electron-builder --publish onTag
+          npx electron-builder --publish onTag 
         env:
           GH_TOKEN: ${{ secrets.GH_TOKEN }}
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v1
         with:
-          tag_name: ${{ github.ref }}  # 使用当前的 tag 作为发布的 tag
+          tag_name: ${{ github.ref_name }}  # 使用当前的 tag 作为发布的 tag
           body: 'Release description'
           files: |
-            dist/**  # 上传 dist 目录下的所有文件
+            dist/mystery-box-result**  # 上传 dist 目录下的所有文件
 
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

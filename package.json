@@ -2,6 +2,8 @@
     "name": "mystery-box-result",
     "version": "1.0.0",
     "main": "main.js",
+    "description": "check result",
+    "author": "r",  
     "scripts": {
         "start": "electron .",
         "build": "electron-builder"
@@ -40,12 +42,5 @@
     "devDependencies": {
         "electron": "^32.1.2",
         "electron-builder": "^25.1.7"
-    },
-    "publish": {
-        "provider": "github",
-        "owner": "your-github-username",
-        "repo": "your-repo-name",
-        "releaseType": "draft"
-        }
-
+    }
 }
