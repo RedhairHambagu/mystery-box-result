@@ -31,7 +31,9 @@ jobs:
           GH_TOKEN: ${{ secrets.GH_TOKEN }}
 
       - name: Build Electron App
-        run: npm run build
+        run: |
+          GH_TOKEN=${{ secrets.GH_TOKEN }} npm run build
+
 
       - name: Debug GH_TOKEN
         run: echo "GH_TOKEN is set"
