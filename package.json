@@ -1,7 +1,9 @@
 {
     "name": "mystery-box-result",
-    "version": "1.0.0",
+    "version": "0.1.1",
     "main": "main.js",
+    "description": "check result",
+    "author": "r",  
     "scripts": {
         "start": "electron .",
         "build": "electron-builder"
@@ -25,8 +27,7 @@
        "win": {
          "target": [
            {
-             "target": "portable",
-             "arch": ["x64", "ia32"]
+             "target": "portable"
            }
          ]
        },
