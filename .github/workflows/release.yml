@@ -33,7 +33,7 @@ jobs:
 
       - name: Publish to GitHub Releases
         run: |
-          npx electron-builder --publish always
+          npx electron-builder --publish onTag
         env:
           GH_TOKEN: ${{ secrets.GH_TOKEN }}
 
@@ -42,5 +42,8 @@ jobs:
         with:
           tag_name: ${{ github.ref }}  # 使用当前的 tag 作为发布的 tag
           body: 'Release description'
+          files: |
+            dist/**  # 上传 dist 目录下的所有文件
+
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

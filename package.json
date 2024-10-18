@@ -32,10 +32,12 @@
        },
         "mac": {
             "target": "dmg",
+            "arch": ["x64", "arm64"],
             "identity": null
         },
         "linux": {
-            "target": "AppImage"
+            "target": "AppImage",
+            "arch": ["x64", "ia32"]
         }
     },
     "devDependencies": {
