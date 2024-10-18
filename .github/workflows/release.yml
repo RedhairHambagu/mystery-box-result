@@ -24,3 +24,4 @@ jobs:
           draft: false  # 设置为 false 以发布正式版本
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}  # 确保使用有效的 token
+          
