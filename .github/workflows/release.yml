@@ -25,6 +25,11 @@ jobs:
       - name: Install electron-builder
         run: npm install electron-builder --save-dev
 
+      - name: Debug GH_TOKEN
+        run: echo "GH_TOKEN is set"
+        env:
+          GH_TOKEN: ${{ secrets.GH_TOKEN }}
+
       - name: Build Electron App
         run: npm run build
 
