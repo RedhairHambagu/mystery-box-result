@@ -70,7 +70,7 @@ jobs:
   #       with:
   #         name: windows-exe
   #         path: blindbox_tool_windows.zip
-
+  
   build-macos:
     runs-on: macos-15  # 使用固定版本避免迁移警告
     steps:
@@ -94,20 +94,64 @@ jobs:
           flutter pub get
           cd macos && pod install --repo-update && cd ..
 
-      - name: Build macOS App
-        run: flutter build macos --release
+      # 清理 CocoaPods 缓存和临时文件
+      - name: Clean CocoaPods cache
+        run: |
+          cd macos
+          pod cache clean --all
+          rm -rf Pods/
+          rm -rf build/
+          pod install --repo-update
+          cd ..
 
-      - name: Create DMG
+      - name: Build macOS App
+        run: |
+          flutter build macos --release
+          
+          # 清理构建产物中的多余文件
+          BUILD_DIR="build/macos/Build/Products/Release"
+          
+          # 删除调试符号和其他开发文件
+          find "$BUILD_DIR" -name "*.dSYM" -exec rm -rf {} + 2>/dev/null || true
+          find "$BUILD_DIR" -name "*.framework.dSYM" -exec rm -rf {} + 2>/dev/null || true
+          find "$BUILD_DIR" -name "__MACOSX" -exec rm -rf {} + 2>/dev/null || true
+          find "$BUILD_DIR" -name ".DS_Store" -delete 2>/dev/null || true
+          
+          # 清理 Flutter 框架中的多余文件
+          APP_PATH=$(find "$BUILD_DIR" -name "*.app" -type d | head -n 1)
+          if [ -n "$APP_PATH" ]; then
+            # 删除 Flutter 框架中的调试文件
+            find "$APP_PATH" -name "*.dSYM" -exec rm -rf {} + 2>/dev/null || true
+            find "$APP_PATH" -path "*/Frameworks/FlutterMacOS.framework/Versions/A/Headers" -exec rm -rf {} + 2>/dev/null || true
+            find "$APP_PATH" -path "*/Frameworks/FlutterMacOS.framework/Headers" -exec rm -rf {} + 2>/dev/null || true
+            
+            # 清理其他可能的调试文件
+            find "$APP_PATH" -name "*.plist" -path "*/Contents/Resources/*" -not -name "Info.plist" -delete 2>/dev/null || true
+          fi
+
+      - name: Create clean DMG
         run: |
           brew install create-dmg
           
           APP_NAME="Blindbox Tool"
           DMG_NAME="blindbox_tool_macos.dmg"
+          BUILD_DIR="build/macos/Build/Products/Release"
           
-          # 获取实际的 app 名称
-          APP_PATH=$(find build/macos/Build/Products/Release -name "*.app" -type d | head -n 1)
+          # 创建一个临时的干净目录
+          TEMP_DIR=$(mktemp -d)
+          
+          # 获取实际的 app 名称和路径
+          APP_PATH=$(find "$BUILD_DIR" -name "*.app" -type d | head -n 1)
           APP_BASENAME=$(basename "$APP_PATH")
           
+          # 复制 app 到临时目录
+          cp -R "$APP_PATH" "$TEMP_DIR/"
+          
+          # 最后清理一次临时目录中的文件
+          find "$TEMP_DIR" -name ".DS_Store" -delete 2>/dev/null || true
+          find "$TEMP_DIR" -name "__MACOSX" -exec rm -rf {} + 2>/dev/null || true
+          
+          # 创建 DMG
           create-dmg \
             --volname "$APP_NAME" \
             --window-pos 200 120 \
@@ -116,8 +160,21 @@ jobs:
             --icon "$APP_BASENAME" 200 190 \
             --hide-extension "$APP_BASENAME" \
             --app-drop-link 600 185 \
+            --no-internet-enable \
             "$DMG_NAME" \
-            "build/macos/Build/Products/Release/" || true
+            "$TEMP_DIR" || true
+          
+          # 清理临时目录
+          rm -rf "$TEMP_DIR"
+          
+          # 验证 DMG 是否创建成功
+          if [ -f "$DMG_NAME" ]; then
+            echo "DMG created successfully: $DMG_NAME"
+            ls -la "$DMG_NAME"
+          else
+            echo "Failed to create DMG"
+            exit 1
+          fi
 
       - name: Upload macOS DMG
         uses: actions/upload-artifact@v4
@@ -140,8 +197,6 @@ jobs:
         uses: softprops/action-gh-release@v1
         with:
           files: |
-            # android-apk/blindbox_tool_android.apk
-            # windows-exe/blindbox_tool_windows.zip
             macos-dmg/blindbox_tool_macos.dmg
           draft: false
           prerelease: false
