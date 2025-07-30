@@ -207,7 +207,7 @@ class WebViewHelperImproved {
 
   // 使用onLoadResource监听网络请求 - 完全按照Electron逻辑
   static Future<Map<String, String>?> extractTokenFromMysteryBoxImproved({
-    Duration timeout = const Duration(minutes: 3),
+    Duration timeout = const Duration(seconds: 30),
   }) async {
     final completer = Completer<Map<String, String>?>();
     Timer? timeoutTimer;

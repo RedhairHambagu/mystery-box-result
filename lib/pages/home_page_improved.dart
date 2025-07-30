@@ -710,34 +710,48 @@ class _HomePageImprovedState extends State<HomePageImproved> {
                         fontSize: 16,
                       ),
                     ),
-                    const SizedBox(width: 12),
-                    Expanded(
+                    if (_platformInfo.isNotEmpty) ...[
+                    const SizedBox(height: 8),
+                    Flexible(
                       child: Text(
-                        '获取盲盒信息请注意：如果抽的盲盒次数多，在没有出现新的盲盒组前，统计结果可能不全，请点击下一页',
+                        '运行环境: $_platformInfo',
                         style: TextStyle(
-                          color: textColor.withOpacity(0.7),
-                          fontSize: 12,
-                          fontStyle: FontStyle.italic,
-                        ),
-                        maxLines: 2,
+                          color: textColor.withOpacity(0.8),
+                          fontSize: 9,
+
+                        ),maxLines: 3,
                         overflow: TextOverflow.ellipsis,
                       ),
                     ),
+                  ],
                   ],
                 ),
               ),
             ],
           ),
-          if (_platformInfo.isNotEmpty) ...[
-            const SizedBox(height: 8),
-            Text(
-              '运行环境: $_platformInfo',
-              style: TextStyle(
-                color: textColor.withOpacity(0.8),
-                fontSize: 12,
-              ),
+
+          const SizedBox(width: 12),
+          Text(
+            '- 📢获取盲盒信息请注意：如果抽的盲盒次数多，在没有出现新的盲盒组前，统计结果可能不全，请点击获取更多',
+            style: TextStyle(
+              color: textColor.withOpacity(0.7),
+              fontSize: 11,
+              fontStyle: FontStyle.italic,
             ),
-          ],
+            maxLines: 3,
+            overflow: TextOverflow.ellipsis,
+          ),
+          const SizedBox(width: 12),
+          Text(
+            '- 📱安卓用户：初次使用获取盲盒会超时。请尝试再次获取盲盒、刷新登录状态、退出重开',
+            style: TextStyle(
+              color: textColor.withOpacity(0.7),
+              fontSize: 11,
+              fontStyle: FontStyle.italic,
+            ),
+            maxLines: 3,
+            overflow: TextOverflow.ellipsis,
+          ),
           const SizedBox(height: 12),
           if (_statusMessage.isNotEmpty)
             Text(
@@ -907,7 +921,7 @@ class _HomePageImprovedState extends State<HomePageImproved> {
                               child: CircularProgressIndicator(strokeWidth: 2),
                             )
                                 : const Icon(Icons.card_giftcard, size: 18),
-                            label: const Text('获取盲盒信息'),
+                            label: const Text('②获取盲盒信息'),
                             style: ElevatedButton.styleFrom(
                               backgroundColor: _canFetchItems ? MorandiGreenTheme.primary : MorandiGreenTheme.accent,
                               foregroundColor: Colors.white,
@@ -927,7 +941,7 @@ class _HomePageImprovedState extends State<HomePageImproved> {
                               child: CircularProgressIndicator(strokeWidth: 2),
                             )
                                 : const Icon(Icons.download, size: 18),
-                            label: Text(_currentPage == 0 ? '获取盲盒记录' : '下一页'),
+                            label: Text(_currentPage == 0 ? '③获取盲盒记录' : '④获取更多记录'),
                             style: ElevatedButton.styleFrom(
                               backgroundColor: MorandiGreenTheme.accent,
                               foregroundColor: Colors.white,
