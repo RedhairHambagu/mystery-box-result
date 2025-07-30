@@ -95,16 +95,21 @@ jobs:
       - name: Get dependencies
         run: flutter pub get
 
+      - name: Clean and get dependencies for macOS
+        run: |
+          flutter clean
+          flutter pub get
+          cd macos && pod install --repo-update && cd ..
+
       - name: Configure Architecture (${{ matrix.arch }})
         run: |
-          # 修改 Podfile 以排除特定架构
           if [ -f "macos/Podfile" ]; then
-            # 在现有的 post_install 块中添加架构配置
-            sed -i.bak '/flutter_additional_macos_build_settings(target)/a\
-            target.build_configurations.each do |config|\
-              config.build_settings["EXCLUDED_ARCHS[sdk=macos*]"] = "${{ matrix.excluded_archs }}"\
-            end' macos/Podfile
+            echo "Injecting EXCLUDED_ARCHS=${{ matrix.excluded_archs }} into Podfile"
+            ARCH_LINE='target.build_configurations.each do |config| config.build_settings["EXCLUDED_ARCHS[sdk=macos*]"] = "${{ matrix.excluded_archs }}" end'
+            sed -i.bak "/flutter_additional_macos_build_settings(target)/a\\
+          $ARCH_LINE" macos/Podfile
           fi
+
 
       - name: Build macOS App (${{ matrix.arch }})
         run: flutter build macos --release
