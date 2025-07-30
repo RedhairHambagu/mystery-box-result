@@ -1,34 +1,39 @@
-name: Build and Release Electron App
+name: Build and Release App
 
 on:
   push:
     tags:
       - 'v*'  # 仅在以 "v" 开头的 tag 被推送时触发
+  workflow_dispatch:  # 添加手动触发
 
 jobs:
   build-android:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      
+
       - name: Setup Java
         uses: actions/setup-java@v4
         with:
           distribution: 'zulu'
           java-version: '17'
-          
+
       - name: Setup Flutter
         uses: subosito/flutter-action@v2
         with:
           flutter-version: '3.24.0'
           channel: 'stable'
-          
+
       - name: Get dependencies
         run: flutter pub get
-        
+
       - name: Build Android APK
         run: flutter build apk --release
-        
+
+      - name: Rename APK
+        run: |
+          mv build/app/outputs/flutter-apk/app-release.apk build/app/outputs/flutter-apk/blindbox_tool_android.apk
+
       - name: Upload Android APK
         uses: actions/upload-artifact@v4
         with:
@@ -39,28 +44,27 @@ jobs:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
-      
+
       - name: Setup Flutter
         uses: subosito/flutter-action@v2
         with:
           flutter-version: '3.24.0'
           channel: 'stable'
-          
+
       - name: Enable Windows Desktop
         run: flutter config --enable-windows-desktop
-        
+
       - name: Get dependencies
         run: flutter pub get
-        
+
       - name: Build Windows EXE
         run: flutter build windows --release
-        
+
       - name: Create Windows installer
         run: |
-          # Create a simple ZIP package for now
           Compress-Archive -Path "build/windows/x64/runner/Release/*" -DestinationPath "blindbox_tool_windows.zip"
         shell: powershell
-        
+
       - name: Upload Windows Build
         uses: actions/upload-artifact@v4
         with:
@@ -68,54 +72,67 @@ jobs:
           path: blindbox_tool_windows.zip
 
   build-macos:
-    runs-on: macos-latest
+    runs-on: macos-15  # 使用固定版本避免迁移警告
     strategy:
       matrix:
-        arch: [x64, arm64]
+        include:
+          - arch: x64
+            excluded_archs: arm64
+          - arch: arm64
+            excluded_archs: x86_64
     steps:
       - uses: actions/checkout@v4
-      
+
       - name: Setup Flutter
         uses: subosito/flutter-action@v2
         with:
           flutter-version: '3.24.0'
           channel: 'stable'
-          
+
       - name: Enable macOS Desktop
         run: flutter config --enable-macos-desktop
-        
+
       - name: Get dependencies
         run: flutter pub get
-        
-      - name: Build macOS App (${{ matrix.arch }})
+
+      - name: Configure Architecture (${{ matrix.arch }})
         run: |
-          if [ "${{ matrix.arch }}" = "arm64" ]; then
-            flutter build macos --release --target-platform darwin-arm64
-          else
-            flutter build macos --release --target-platform darwin-x64
+          # 修改 Podfile 以排除特定架构
+          if [ -f "macos/Podfile" ]; then
+            echo "post_install do |installer|" >> macos/Podfile
+            echo "  installer.pods_project.targets.each do |target|" >> macos/Podfile
+            echo "    target.build_configurations.each do |config|" >> macos/Podfile
+            echo "      config.build_settings['EXCLUDED_ARCHS[sdk=macos*]'] = '${{ matrix.excluded_archs }}'" >> macos/Podfile
+            echo "    end" >> macos/Podfile
+            echo "  end" >> macos/Podfile
+            echo "end" >> macos/Podfile
           fi
-          
+
+      - name: Build macOS App (${{ matrix.arch }})
+        run: flutter build macos --release
+
       - name: Create DMG
         run: |
-          # Install create-dmg tool
           brew install create-dmg
           
-          # Create DMG
           APP_NAME="Blindbox Tool"
           DMG_NAME="blindbox_tool_macos_${{ matrix.arch }}.dmg"
           
+          # 获取实际的 app 名称
+          APP_PATH=$(find build/macos/Build/Products/Release -name "*.app" -type d | head -n 1)
+          APP_BASENAME=$(basename "$APP_PATH")
+          
           create-dmg \
             --volname "$APP_NAME" \
-            --volicon "build/macos/Build/Products/Release/mystery_box_tool.app/Contents/Resources/AppIcon.icns" \
             --window-pos 200 120 \
             --window-size 800 400 \
             --icon-size 100 \
-            --icon "blindbox_tool.app" 200 190 \
-            --hide-extension "blindbox_tool.app" \
+            --icon "$APP_BASENAME" 200 190 \
+            --hide-extension "$APP_BASENAME" \
             --app-drop-link 600 185 \
             "$DMG_NAME" \
-            "build/macos/Build/Products/Release/"
-            
+            "build/macos/Build/Products/Release/" || true
+
       - name: Upload macOS DMG
         uses: actions/upload-artifact@v4
         with:
@@ -125,11 +142,14 @@ jobs:
   release:
     needs: [build-android, build-windows, build-macos]
     runs-on: ubuntu-latest
-    if: startsWith(github.ref, 'refs/tags/')
+    if: startsWith(github.ref, 'refs/tags/') || github.event_name == 'workflow_dispatch'
     steps:
       - name: Download all artifacts
         uses: actions/download-artifact@v4
-        
+
+      - name: List downloaded files
+        run: find . -type f -name "*" | head -20
+
       - name: Create Release
         uses: softprops/action-gh-release@v1
         with:
@@ -140,5 +160,6 @@ jobs:
             macos-dmg-arm64/blindbox_tool_macos_arm64.dmg
           draft: false
           prerelease: false
+          tag_name: ${{ github.ref_name }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
