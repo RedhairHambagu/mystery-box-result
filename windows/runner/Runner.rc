@@ -90,12 +90,12 @@ BEGIN
         BLOCK "040904e4"
         BEGIN
             VALUE "CompanyName", "com.mystery.box.result" "\0"
-            VALUE "FileDescription", "mystery_box_result" "\0"
+            VALUE "FileDescription", "blindbox_tool" "\0"
             VALUE "FileVersion", VERSION_AS_STRING "\0"
-            VALUE "InternalName", "mystery_box_result" "\0"
+            VALUE "InternalName", "blindbox_tool" "\0"
             VALUE "LegalCopyright", "Copyright (C) 2025 com.mystery.box.result. All rights reserved." "\0"
-            VALUE "OriginalFilename", "mystery_box_result.exe" "\0"
-            VALUE "ProductName", "mystery_box_result" "\0"
+            VALUE "OriginalFilename", "blindbox_tool.exe" "\0"
+            VALUE "ProductName", "blindbox_tool" "\0"
             VALUE "ProductVersion", VERSION_AS_STRING "\0"
         END
     END

@@ -1,4 +1,4 @@
-package com.mystery.box.result.mystery_box_result
+package com.mystery.box.result.blindbox_tool
 
 import io.flutter.embedding.android.FlutterActivity
 

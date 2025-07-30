@@ -5,7 +5,7 @@
 // 'flutter create' template.
 
 // The application's name. By default this is also the title of the Flutter window.
-PRODUCT_NAME = mystery_box_result
+PRODUCT_NAME = blindbox_tool
 
 // The application's bundle identifier
 PRODUCT_BUNDLE_IDENTIFIER = com.mystery.box.result.mysteryBoxResult
