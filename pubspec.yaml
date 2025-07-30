@@ -1,0 +1,77 @@
+name: blindbox_tool
+description: A cross-platform Flutter application for mystery box management.
+
+publish_to: 'none' # Remove this line if you wish to publish to pub.dev
+
+version: 1.0.0+1
+
+environment:
+  sdk: '>=3.0.0 <4.0.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+  # WebView support - cross-platform
+  flutter_inappwebview: 6.1.5
+
+  # HTTP requests
+  http: ^1.1.0
+
+  # JSON serialization
+  json_annotation: ^4.8.1
+
+  # Shared preferences for local storage
+  shared_preferences: ^2.2.2
+
+  # Icons
+  cupertino_icons: ^1.0.2
+
+  # Add window_manager for desktop window management
+  window_manager: ^0.3.0 # Use the latest stable version
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+
+  # Linting
+  flutter_lints: ^3.0.0
+
+  # JSON code generation
+  json_serializable: ^6.7.1
+  build_runner: ^2.4.7
+
+# Platform-specific configurations
+flutter:
+  uses-material-design: true
+
+  # Assets
+  # assets:
+  #   - images/
+
+  # Fonts
+  # fonts:
+  #   - family: Schyler
+  #     fonts:
+  #       - asset: fonts/Schyler-Regular.ttf
+  #       - asset: fonts/Schyler-Italic.ttf
+  #         style: italic
+
+# Platform-specific settings for WebView
+# Android
+#android:
+#  minSdkVersion: 21  # Required for flutter_inappwebview
+#  compileSdkVersion: 34
+#  targetSdkVersion: 34
+
+# iOS
+#ios:
+#  deploymentTarget: 11.0  # Required for flutter_inappwebview
+
+# macOS
+macos:
+  deploymentTarget: 10.14  # Required for flutter_inappwebview
+
+# Windows - No additional configuration needed
+
+# Linux - No additional configuration needed

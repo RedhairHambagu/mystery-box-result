@@ -6,90 +6,139 @@ on:
       - 'v*'  # 仅在以 "v" 开头的 tag 被推送时触发
 
 jobs:
-  build-linux:
+  build-android:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v2
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v2
-        with:
-          node-version: '22'
-
-      - name: Install dependencies
-        run: npm install
-
-      - name: Build Electron App for Linux
-        run: |
-          GH_TOKEN=${{ secrets.GH_TOKEN }} npx electron-builder --linux
-
-      - name: List Build Artifacts
-        run: ls -la dist  # 检查构建输出
+      - uses: actions/checkout@v4
       
-      - name: Clean up build artifacts
-        run: |
-          rm -f dist/*.yml
-          rm -f dist/*.blockmap   
-      - name: Publish to GitHub Releases
-        run: |
-          npx electron-builder --linux --publish onTag
-        env:
-          GH_TOKEN: ${{ secrets.GH_TOKEN }}
-
-  build-mac:
-    runs-on: macos-latest
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v2
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v2
+      - name: Setup Java
+        uses: actions/setup-java@v4
         with:
-          node-version: '22'
+          distribution: 'zulu'
+          java-version: '17'
+          
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.24.0'
+          channel: 'stable'
+          
+      - name: Get dependencies
+        run: flutter pub get
+        
+      - name: Build Android APK
+        run: flutter build apk --release
+        
+      - name: Upload Android APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-apk
+          path: build/app/outputs/flutter-apk/blindbox_tool_android.apk
 
-      - name: Install dependencies
-        run: npm install
-
-      - name: Build Electron App for macOS
-        run: |
-          GH_TOKEN=${{ secrets.GH_TOKEN }} npx electron-builder --mac
-
-      - name: List Build Artifacts
-        run: ls -la dist  # 检查构建输出
-      
-      - name: Clean up build artifacts
-        run: |
-          rm -f dist/*.yml
-          rm -f dist/*.blockmap
-      - name: Publish to GitHub Releases
-        run: |
-          npx electron-builder --mac --publish onTag
-        env:
-          GH_TOKEN: ${{ secrets.GH_TOKEN }}
-
-  build-win:
+  build-windows:
     runs-on: windows-latest
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v2
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v2
+      - uses: actions/checkout@v4
+      
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
         with:
-          node-version: '22'
-
-      - name: Install dependencies
-        run: npm install
-
-      - name: Build Electron App for Windows
+          flutter-version: '3.24.0'
+          channel: 'stable'
+          
+      - name: Enable Windows Desktop
+        run: flutter config --enable-windows-desktop
+        
+      - name: Get dependencies
+        run: flutter pub get
+        
+      - name: Build Windows EXE
+        run: flutter build windows --release
+        
+      - name: Create Windows installer
         run: |
-          set GH_TOKEN=${{ secrets.GH_TOKEN }} && npx electron-builder --win
+          # Create a simple ZIP package for now
+          Compress-Archive -Path "build/windows/x64/runner/Release/*" -DestinationPath "blindbox_tool_windows.zip"
+        shell: powershell
+        
+      - name: Upload Windows Build
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-exe
+          path: blindbox_tool_windows.zip
 
-      - name: List Build Artifacts
-        run: dir dist  # 检查构建输出
-      - name: Publish to GitHub Releases
+  build-macos:
+    runs-on: macos-latest
+    strategy:
+      matrix:
+        arch: [x64, arm64]
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.24.0'
+          channel: 'stable'
+          
+      - name: Enable macOS Desktop
+        run: flutter config --enable-macos-desktop
+        
+      - name: Get dependencies
+        run: flutter pub get
+        
+      - name: Build macOS App (${{ matrix.arch }})
         run: |
-          npx electron-builder --win --publish onTag
+          if [ "${{ matrix.arch }}" = "arm64" ]; then
+            flutter build macos --release --target-platform darwin-arm64
+          else
+            flutter build macos --release --target-platform darwin-x64
+          fi
+          
+      - name: Create DMG
+        run: |
+          # Install create-dmg tool
+          brew install create-dmg
+          
+          # Create DMG
+          APP_NAME="Blindbox Tool"
+          DMG_NAME="blindbox_tool_macos_${{ matrix.arch }}.dmg"
+          
+          create-dmg \
+            --volname "$APP_NAME" \
+            --volicon "build/macos/Build/Products/Release/mystery_box_tool.app/Contents/Resources/AppIcon.icns" \
+            --window-pos 200 120 \
+            --window-size 800 400 \
+            --icon-size 100 \
+            --icon "blindbox_tool.app" 200 190 \
+            --hide-extension "blindbox_tool.app" \
+            --app-drop-link 600 185 \
+            "$DMG_NAME" \
+            "build/macos/Build/Products/Release/"
+            
+      - name: Upload macOS DMG
+        uses: actions/upload-artifact@v4
+        with:
+          name: macos-dmg-${{ matrix.arch }}
+          path: blindbox_tool_macos_${{ matrix.arch }}.dmg
+
+  release:
+    needs: [build-android, build-windows, build-macos]
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/')
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        
+      - name: Create Release
+        uses: softprops/action-gh-release@v1
+        with:
+          files: |
+            android-apk/blindbox_tool_android.apk
+            windows-exe/blindbox_tool_windows.zip
+            macos-dmg-x64/blindbox_tool_macos_x64.dmg
+            macos-dmg-arm64/blindbox_tool_macos_arm64.dmg
+          draft: false
+          prerelease: false
         env:
-          GH_TOKEN: ${{ secrets.GH_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
