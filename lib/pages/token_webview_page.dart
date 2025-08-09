@@ -221,6 +221,180 @@ class _TokenWebViewPageState extends State<TokenWebViewPage> {
     }
   }
 
+  // Windows平台额外的token检测方法
+  void _checkUrlForTokenWindows(String url) {
+    // 检查各种可能包含token的URL模式
+    final tokenPatterns = [
+      'wdtoken=',
+      'token=',
+      'access_token=',
+      'wd_token=',
+    ];
+    
+    for (final pattern in tokenPatterns) {
+      if (url.contains(pattern)) {
+        print('🪟 [Windows] 检测到token模式: $pattern in $url');
+        try {
+          final uri = Uri.parse(url);
+          final token = uri.queryParameters['wdtoken'] ??
+                       uri.queryParameters['token'] ??
+                       uri.queryParameters['access_token'] ??
+                       uri.queryParameters['wd_token'];
+          
+          if (token != null && token.isNotEmpty && !_hasTokenExtracted) {
+            print('🪟 [Windows] 通过URL模式检测到token: $token');
+            
+            final underscoreParams = TokenExtractor.extractUnderscoreParams(url);
+            final result = <String, String>{
+              'wdtoken': token,
+              'token': token,
+              'foundUrl': url,
+              'source': 'TokenWebViewPage_WindowsCheck',
+              'timestamp': DateTime.now().millisecondsSinceEpoch.toString(),
+              'platform': Platform.operatingSystem,
+            };
+            
+            result.addAll(underscoreParams);
+            _handleTokenExtracted(result);
+            return;
+          }
+        } catch (e) {
+          print('🪟 [Windows] URL解析异常: $e');
+        }
+      }
+    }
+    
+    // 检查微店相关的API调用
+    if (url.contains('weidian.com') && (url.contains('api') || url.contains('ajax'))) {
+      print('🪟 [Windows] 检测到微店API调用: $url');
+    }
+  }
+
+  // Windows平台注入JavaScript监听器
+  void _injectWindowsTokenListener(InAppWebViewController controller) {
+    try {
+      final jsCode = '''
+        (function() {
+          console.log('🪟 [Windows] JavaScript token监听器已注入');
+          
+          // 重写XMLHttpRequest
+          const originalXHR = window.XMLHttpRequest;
+          window.XMLHttpRequest = function() {
+            const xhr = new originalXHR();
+            const originalOpen = xhr.open;
+            const originalSend = xhr.send;
+            
+            xhr.open = function(method, url, async, user, password) {
+              if (url && (url.includes('thor.weidian.com') || url.includes('wdtoken'))) {
+                console.log('🪟 [Windows] XHR请求:', url);
+                window.flutter_inappwebview.callHandler('onWindowsTokenFound', url);
+              }
+              return originalOpen.apply(this, arguments);
+            };
+            
+            return xhr;
+          };
+          
+          // 重写fetch
+          const originalFetch = window.fetch;
+          window.fetch = function(url, options) {
+            if (url && (url.includes('thor.weidian.com') || url.includes('wdtoken'))) {
+              console.log('🪟 [Windows] Fetch请求:', url);
+              window.flutter_inappwebview.callHandler('onWindowsTokenFound', url);
+            }
+            return originalFetch.apply(this, arguments);
+          };
+          
+          console.log('🪟 [Windows] 网络请求监听器设置完成');
+        })();
+      ''';
+      
+      controller.evaluateJavascript(source: jsCode);
+      
+      // 添加JavaScript处理器
+      controller.addJavaScriptHandler(
+        handlerName: 'onWindowsTokenFound',
+        callback: (args) {
+          if (args.isNotEmpty) {
+            final url = args[0].toString();
+            print('🪟 [Windows] JavaScript检测到token URL: $url');
+            _checkUrlForTokenWindows(url);
+          }
+        },
+      );
+      
+    } catch (e) {
+      print('🪟 [Windows] JavaScript注入失败: $e');
+    }
+  }
+
+  // Windows平台定期轮询检查token
+  Timer? _windowsPollingTimer;
+  
+  void _startWindowsTokenPolling(InAppWebViewController controller) {
+    print('🪟 [Windows] 启动token轮询检查...');
+    
+    _windowsPollingTimer = Timer.periodic(const Duration(seconds: 3), (timer) async {
+      if (_hasTokenExtracted || !mounted) {
+        timer.cancel();
+        return;
+      }
+      
+      try {
+        // 检查当前URL是否包含token
+        final currentUrl = await controller.getUrl();
+        if (currentUrl != null) {
+          final urlString = currentUrl.toString();
+          if (urlString.contains('wdtoken=')) {
+            print('🪟 [Windows] 轮询检查发现token URL: $urlString');
+            _checkUrlForTokenWindows(urlString);
+          }
+        }
+        
+        // 执行JavaScript检查localStorage和sessionStorage
+        final jsResult = await controller.evaluateJavascript(source: '''
+          (function() {
+            try {
+              var result = {
+                localStorage: {},
+                sessionStorage: {},
+                cookies: document.cookie,
+                currentUrl: window.location.href
+              };
+              
+              // 检查localStorage
+              for (var i = 0; i < localStorage.length; i++) {
+                var key = localStorage.key(i);
+                if (key && (key.includes('token') || key.includes('wd'))) {
+                  result.localStorage[key] = localStorage.getItem(key);
+                }
+              }
+              
+              // 检查sessionStorage
+              for (var i = 0; i < sessionStorage.length; i++) {
+                var key = sessionStorage.key(i);
+                if (key && (key.includes('token') || key.includes('wd'))) {
+                  result.sessionStorage[key] = sessionStorage.getItem(key);
+                }
+              }
+              
+              return JSON.stringify(result);
+            } catch (e) {
+              return JSON.stringify({error: e.message});
+            }
+          })();
+        ''');
+        
+        if (jsResult != null) {
+          print('🪟 [Windows] 轮询检查结果: $jsResult');
+        }
+        
+      } catch (e) {
+        print('🪟 [Windows] 轮询检查异常: $e');
+      }
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -452,7 +626,7 @@ class _TokenWebViewPageState extends State<TokenWebViewPage> {
         }
       },
 
-      onLoadStop: (controller, url) {
+      onLoadStop: (controller, url) async {
         if (mounted) {
           setState(() {
             _currentUrl = url?.toString() ?? '';
@@ -463,6 +637,15 @@ class _TokenWebViewPageState extends State<TokenWebViewPage> {
           });
         }
         print('页面加载完成: $_currentUrl');
+        
+        // Windows平台特定：注入JavaScript监听网络请求
+        if (Platform.isWindows && !_hasTokenExtracted) {
+          print('🪟 [Windows] 页面加载完成，注入token监听JavaScript...');
+          _injectWindowsTokenListener(controller);
+          
+          // 启动定时器定期检查token
+          _startWindowsTokenPolling(controller);
+        }
       },
 
       onReceivedError: (controller, request, error) {
@@ -489,9 +672,17 @@ class _TokenWebViewPageState extends State<TokenWebViewPage> {
       onLoadResource: (controller, resource) {
         final url = resource.url.toString();
         
+        // Windows平台增强调试输出
+        if (Platform.isWindows) {
+          if (url.contains('thor.weidian.com') || url.contains('wdtoken') || url.contains('share.getConfig')) {
+            print('🪟 [Windows] 资源加载: $url');
+          }
+        }
+        
         // 检查是否是目标URL
         if (url.contains('https://thor.weidian.com/skittles/share.getConfig')) {
           print('🎯 发现目标URL: $url');
+          print('🎯 [${Platform.operatingSystem}] 开始解析token...');
           
           if (url.contains('wdtoken=')) {
             print('🔑 发现wdtoken参数');
@@ -504,14 +695,16 @@ class _TokenWebViewPageState extends State<TokenWebViewPage> {
                 // 提取所有以"_"开头的参数
                 final underscoreParams = TokenExtractor.extractUnderscoreParams(url);
                 
-                print('✅ 成功获取wdtoken: ${wdtoken.substring(0, wdtoken.length.clamp(0, 20))}...');
+                // 遵循CLAUDE.md指令，不使用substring截断
+                print('✅ 成功获取wdtoken: $wdtoken (长度: ${wdtoken.length})');
                 print('📊 下划线参数: $underscoreParams');
+                print('🎉 [${Platform.operatingSystem}] Token提取成功！');
                 
                 final result = <String, String>{
                   'wdtoken': wdtoken,
                   'token': wdtoken,
                   'foundUrl': url,
-                  'source': 'TokenWebViewPage',
+                  'source': 'TokenWebViewPage_onLoadResource',
                   'timestamp': DateTime.now().millisecondsSinceEpoch.toString(),
                   'platform': Platform.operatingSystem,
                 };
@@ -522,9 +715,16 @@ class _TokenWebViewPageState extends State<TokenWebViewPage> {
                 _handleTokenExtracted(result);
               }
             } catch (e) {
-              print('❌ URL解析错误: $e');
+              print('❌ [${Platform.operatingSystem}] URL解析错误: $e');
             }
+          } else {
+            print('⚠️ [${Platform.operatingSystem}] 目标URL不包含wdtoken参数: $url');
           }
+        }
+        
+        // Windows平台额外的token检测方法
+        if (Platform.isWindows && !_hasTokenExtracted) {
+          _checkUrlForTokenWindows(url);
         }
       },
     );
@@ -559,6 +759,7 @@ class _TokenWebViewPageState extends State<TokenWebViewPage> {
   @override
   void dispose() {
     _timeoutTimer?.cancel();
+    _windowsPollingTimer?.cancel();
     _webViewController = null;
     super.dispose();
   }
