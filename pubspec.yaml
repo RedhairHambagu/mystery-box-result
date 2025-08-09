@@ -14,9 +14,11 @@ dependencies:
 
   # WebView support - cross-platform
   flutter_inappwebview: 6.1.5
+  webview_windows: ^0.4.0
 
   # HTTP requests
   http: ^1.1.0
+  dio: ^5.3.0
 
   # JSON serialization
   json_annotation: ^4.8.1
