@@ -21,7 +21,7 @@ class TokenMonitor {
 
   // 开始监听token请求，带自动回退机制
   static void startMonitoring({
-    Duration timeout = const Duration(minutes: 5),
+    Duration timeout = const Duration(minutes: 1),
     bool enableFallback = true,
   }) {
     if (_isMonitoring) {
@@ -160,7 +160,7 @@ class TokenMonitor {
 
     try {
       final result = await TokenExtractor.extractToken(
-        timeout: const Duration(minutes: 2),
+        timeout: const Duration(minutes: 1),
       );
 
       if (result != null) {

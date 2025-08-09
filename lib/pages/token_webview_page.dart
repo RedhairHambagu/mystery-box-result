@@ -59,8 +59,8 @@ class _TokenWebViewPageState extends State<TokenWebViewPage> {
   }
 
   void _setTokenExtractionTimeout() {
-    // 设置总体超时时间为2分钟
-    _timeoutTimer = Timer(const Duration(minutes: 2), () {
+    // 设置总体超时时间为1分钟
+    _timeoutTimer = Timer(const Duration(minutes: 1), () {
       if (!_hasTokenExtracted && mounted) {
         setState(() {
           _statusMessage = '⏰ Token获取超时，请重试或检查网络连接';
