@@ -26,18 +26,29 @@ class AuthService {
     await _prefs!.setBool(_loginStatusKey, true);
   }
 
+  // 保存登录Cookie和Token（如果可用）
+  Future<void> saveLoginData(String cookie, {Map<String, String>? tokenResult}) async {
+    await _initPrefs();
+    
+    // 保存cookie
+    await _prefs!.setString(_cookieKey, cookie);
+    await _prefs!.setBool(_loginStatusKey, true);
+    
+    // 如果有token数据，也保存
+    if (tokenResult != null) {
+      await saveWdTokenAndParams(tokenResult);
+      print('AuthService: Cookie和Token都已保存');
+    } else {
+      print('AuthService: 仅保存了Cookie，Token需要后续获取');
+    }
+  }
+
   // 获取登录Cookie
   Future<String?> getCookie() async {
     await _initPrefs();
     return _prefs!.getString(_cookieKey);
   }
 
-  // 保存wdToken和相关参数
-  Future<void> saveWdTokenAndParams(String wdToken, Map<String, String> underscoreParams) async {
-    await _initPrefs();
-    await _prefs!.setString(_wdTokenKey, wdToken);
-    await _prefs!.setString(_underscoreParamsKey, jsonEncode(underscoreParams));
-  }
 
   // 获取wdToken
   Future<String?> getWdToken() async {
@@ -78,6 +89,35 @@ class AuthService {
     print('AuthService: 所有登录数据已清除');
   }
 
+  // 清除wdToken和相关参数
+  Future<void> clearWdToken() async {
+    await _initPrefs();
+    await _prefs!.remove(_wdTokenKey);
+    await _prefs!.remove(_underscoreParamsKey);
+  }
+
+  // 保存token结果 - 支持Map<String, String>格式
+  Future<void> saveWdTokenAndParams(Map<String, String> tokenResult) async {
+    await _initPrefs();
+    
+    final wdToken = tokenResult['wdtoken'] ?? tokenResult['token'];
+    if (wdToken != null) {
+      await _prefs!.setString(_wdTokenKey, wdToken);
+      
+      // 提取所有以"_"开头的参数
+      final underscoreParams = <String, String>{};
+      tokenResult.forEach((key, value) {
+        if (key.startsWith('_')) {
+          underscoreParams[key] = value;
+        }
+      });
+      
+      if (underscoreParams.isNotEmpty) {
+        await _prefs!.setString(_underscoreParamsKey, jsonEncode(underscoreParams));
+      }
+    }
+  }
+
   // 验证Cookie是否有效
   Future<bool> validateCookie() async {
     final cookie = await getCookie();
@@ -95,5 +135,52 @@ class AuthService {
     } catch (e) {
       return false;
     }
+  }
+
+  // 尝试从登录后的网页响应中提取token
+  Future<Map<String, String>?> tryExtractTokenFromLoginResponse() async {
+    final cookie = await getCookie();
+    if (cookie == null || cookie.isEmpty) return null;
+
+    try {
+      print('AuthService: 尝试从登录响应中提取token');
+      
+      // 访问盲盒页面，看是否能直接获取token
+      final response = await http.get(
+        Uri.parse('https://h5.weidian.com/m/mystery-box/list.html#/'),
+        headers: {
+          'Cookie': cookie,
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+          'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+          'Accept-Language': 'zh-CN,zh;q=0.9,en;q=0.8',
+        },
+      );
+
+      if (response.statusCode == 200) {
+        final html = response.body;
+        
+        // 尝试从HTML中提取token相关信息
+        final tokenRegex = RegExp(r'wdtoken["\s=:]+([a-zA-Z0-9_-]+)');
+        final match = tokenRegex.firstMatch(html);
+        
+        if (match != null && match.group(1) != null) {
+          final token = match.group(1)!;
+          print('AuthService: 从HTML中找到token: ${token}...');
+          
+          return {
+            'wdtoken': token,
+            'token': token,
+            'source': 'login_html_extraction',
+            'timestamp': DateTime.now().millisecondsSinceEpoch.toString(),
+          };
+        }
+        
+        print('AuthService: HTML中未找到token，需要通过WebView获取');
+      }
+    } catch (e) {
+      print('AuthService: 从登录响应提取token失败: $e');
+    }
+    
+    return null;
   }
 }

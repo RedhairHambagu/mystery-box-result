@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../models/mystery_box_group.dart';
+import '../pages/home_page_improved.dart';
 
 class MysteryBoxGroupWidget extends StatefulWidget {
   final MysteryBoxGroup group;
@@ -72,21 +73,21 @@ class _MysteryBoxGroupWidgetState extends State<MysteryBoxGroupWidget> {
                         '已获得',
                         widget.group.totalObtained.toString(),
                         Icons.card_giftcard,
-                        Colors.blue,
+                        MorandiGreenTheme.cardPrimary,
                       ),
                       const SizedBox(width: 12),
                       _buildStatCard(
                         '端盒进度',
                         '${(widget.group.completionRate * 100).toStringAsFixed(1)}%',
                         Icons.percent,
-                        Colors.green,
+                        MorandiGreenTheme.cardSecondary,
                       ),
                       const SizedBox(width: 12),
                       _buildStatCard(
                         '未抽到',
                         widget.group.missingItems.length.toString(),
                         Icons.help_outline,
-                        Colors.orange,
+                        MorandiGreenTheme.cardWarning,
                       ),
                     ],
                   ),
@@ -206,7 +207,7 @@ class _MysteryBoxGroupWidgetState extends State<MysteryBoxGroupWidget> {
         decoration: BoxDecoration(
           color: color.withOpacity(0.1),
           borderRadius: BorderRadius.circular(8),
-          border: Border.all(color: color.withOpacity(0.3)),
+          border: Border.all(color: color.withOpacity(0.6), width: 1.2),
         ),
         child: Column(
           children: [

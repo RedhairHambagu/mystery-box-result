@@ -14,11 +14,9 @@ dependencies:
 
   # WebView support - cross-platform
   flutter_inappwebview: 6.1.5
-  webview_windows: ^0.4.0
 
   # HTTP requests
   http: ^1.1.0
-  dio: ^5.3.0
 
   # JSON serialization
   json_annotation: ^4.8.1
@@ -42,6 +40,9 @@ dev_dependencies:
   # JSON code generation
   json_serializable: ^6.7.1
   build_runner: ^2.4.7
+
+  # Icon generation
+  flutter_launcher_icons: ^0.13.1
 
 # Platform-specific configurations
 flutter:
@@ -77,3 +78,21 @@ macos:
 # Windows - No additional configuration needed
 
 # Linux - No additional configuration needed
+
+flutter_launcher_icons:
+  android: "launcher_icon"
+  ios: true
+  image_path: "app_icon.png"
+  min_sdk_android: 21
+  web:
+    generate: true
+    image_path: "app_icon.png"
+    background_color: "#hexcode"
+    theme_color: "#hexcode"
+  windows:
+    generate: true
+    image_path: "app_icon.png"
+    icon_size: 48
+  macos:
+    generate: true
+    image_path: "app_icon.png"

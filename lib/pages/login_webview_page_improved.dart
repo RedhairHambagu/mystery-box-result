@@ -3,6 +3,9 @@ import 'package:flutter_inappwebview/flutter_inappwebview.dart';
 import 'dart:async';
 import 'dart:io';
 import '../utils/webview_helper_improved.dart';
+import '../utils/token_extractor.dart';
+import '../utils/token_monitor.dart';
+import '../services/auth_service.dart';
 
 class LoginWebViewPageImproved extends StatefulWidget {
   final Function(Map<String, String> cookies) onLoginSuccess;
@@ -32,6 +35,8 @@ class _LoginWebViewPageImprovedState extends State<LoginWebViewPageImproved> {
   bool _hasWebViewCreated = false;
   int _loadAttempts = 0;
   static const int maxLoadAttempts = 3;
+  bool _isLoggedIn = false;
+  StreamSubscription<Map<String, String>>? _tokenSubscription;
 
   @override
   void initState() {
@@ -58,20 +63,21 @@ class _LoginWebViewPageImprovedState extends State<LoginWebViewPageImproved> {
     });
   }
 
-  // 处理登录成功 - 自动保存并返回
+  // 处理登录成功 - cookies已在_executeLoginFlow中保存，这里只返回结果
   void _handleLoginSuccess(Map<String, String> cookies) async {
     setState(() {
-      _statusMessage = '✅ 登录成功！已保存${cookies.length}个cookie，即将返回主页面...';
+      _statusMessage = '✅ 登录成功！Cookie和Token已保存，即将返回主页面...';
       _isWaitingForLogin = false;
     });
 
-    print('检测到登录成功，cookies数量: ${cookies.length}');
+    print('登录流程完成，cookies数量: ${cookies.length}，已预先保存到AuthService');
 
     // 延迟2秒让用户看到成功提示
     await Future.delayed(const Duration(seconds: 2));
 
     if (mounted) {
-      widget.onLoginSuccess(cookies);
+      // 传递空Map，因为cookies已经保存到AuthService了
+      widget.onLoginSuccess({});
     }
   }
 
@@ -89,8 +95,13 @@ class _LoginWebViewPageImprovedState extends State<LoginWebViewPageImproved> {
     try {
       final cookies = await _checkLoginStatus();
       if (cookies != null && cookies.isNotEmpty && cookies.length>3) {
-        print('手动检查检测到登录成功');
-        _handleLoginSuccess(cookies);
+        setState(() {
+          _isLoggedIn = true;
+        });
+        print('手动检查检测到登录成功，开始登录流程');
+        
+        // 执行登录流程
+        await _executeLoginFlow(cookies);
       } else {
         setState(() {
           _statusMessage = '未检测到登录状态，请完成登录后再次点击检查';
@@ -219,7 +230,7 @@ class _LoginWebViewPageImprovedState extends State<LoginWebViewPageImproved> {
             key.toLowerCase().contains('session'));
 
       if (hasLoginCookie && cookies.length > 2) {
-        print('检测到登录成功，获取到 ${cookies.length} 个cookies');
+        print('检测到cookie，获取到 ${cookies.length} 个cookies');
         return cookies;
       }
 
@@ -249,6 +260,155 @@ class _LoginWebViewPageImprovedState extends State<LoginWebViewPageImproved> {
     }
 
     return allCookies;
+  }
+
+  // 将cookies Map转换为cookie字符串
+  String _buildCookieString(Map<String, String> cookies) {
+    return cookies.entries
+        .map((entry) => '${entry.key}=${entry.value}')
+        .join('; ');
+  }
+
+  // 页面加载完成后自动检测登录状态
+  Future<void> _autoCheckLoginAfterPageLoad() async {
+    if (_webViewController == null || _isWaitingForLogin) {
+      return;
+    }
+
+    // 延迟一点时间让页面完全渲染
+    await Future.delayed(const Duration(seconds: 2));
+
+    if (!mounted) return;
+
+    print('自动检测登录状态开始...');
+    
+    try {
+      final cookies = await _checkLoginStatus();
+      if (cookies != null && cookies.isNotEmpty && cookies.length > 3) {
+        print('自动检测发现用户已登录，开始登录流程');
+        
+        setState(() {
+          _isLoggedIn = true;
+          _isWaitingForLogin = true;
+          _statusMessage = '✅ 检测到登录成功！正在保存cookies...';
+        });
+        
+        // 执行与手动检查相同的登录流程
+        _executeLoginFlow(cookies);
+      } else {
+        setState(() {
+          _statusMessage = '请完成登录，然后点击"先登录后，再点此处"按钮';
+        });
+      }
+    } catch (e) {
+      print('自动检测登录状态失败: $e');
+      setState(() {
+        _statusMessage = '页面加载完成，请手动登录';
+      });
+    }
+  }
+
+  // 提取登录流程，供手动和自动检测复用
+  Future<void> _executeLoginFlow(Map<String, String> cookies) async {
+    try {
+      // 1. 先保存登录后的cookies到AuthService，并标记为已登录
+      final cookieString = _buildCookieString(cookies);
+      await AuthService().saveCookie(cookieString);
+      print('✅ 登录cookies已保存到AuthService');
+      
+      // 标记为已登录状态
+      setState(() {
+        _isLoggedIn = true;
+        _statusMessage = '✅ 登录cookies已保存！正在启动token监听器...';
+      });
+      
+      // 2. 启动TokenMonitor监听token请求
+      _startTokenMonitoring();
+      
+      // 3. 然后访问mystery-box页面获取token
+      await _webViewController!.loadUrl(
+        urlRequest: URLRequest(
+          url: WebUri('https://h5.weidian.com/m/mystery-box/list.html#/'),
+          headers: {
+            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+            'Accept-Language': 'zh-CN,zh;q=0.9,en;q=0.8',
+            'Cache-Control': 'no-cache',
+            'Pragma': 'no-cache',
+          },
+        ),
+      );
+      
+      setState(() {
+        _statusMessage = '✅ 正在访问mystery-box页面并监听token请求...';
+      });
+      
+    } catch (e) {
+      print('执行登录流程失败: $e');
+      setState(() {
+        _statusMessage = '登录流程执行失败: $e';
+        _isWaitingForLogin = false;
+        _isLoggedIn = false; // 登录失败时重置状态
+      });
+    }
+  }
+
+  // 启动token监听
+  void _startTokenMonitoring() {
+    // 订阅TokenMonitor的token流
+    _tokenSubscription = TokenMonitor.tokenStream.listen(
+      (tokenResult) {
+        if (!mounted) return;
+
+        if (tokenResult.containsKey('status') && tokenResult['status'] == 'fallback') {
+          // 处理回退情况
+          setState(() {
+            _statusMessage = '⚠️ ${tokenResult['message']} - 尝试次数: ${tokenResult['attempts']}';
+          });
+          
+          // 显示手动模式提示
+          Timer(const Duration(seconds: 2), () {
+            if (mounted) {
+              setState(() {
+                _statusMessage = '请手动刷新页面或重新登录来获取token';
+                _isWaitingForLogin = false;
+              });
+            }
+          });
+        } else {
+          // 成功获取token
+          print('✅ TokenMonitor成功获取token');
+          setState(() {
+            _statusMessage = '✅ Token监听器获取成功！登录流程完成...';
+          });
+          
+          // 完成登录流程
+          Timer(const Duration(seconds: 2), () {
+            if (mounted) {
+              _handleLoginSuccess({});
+            }
+          });
+        }
+      },
+      onError: (error) {
+        print('❌ TokenMonitor流错误: $error');
+        if (mounted) {
+          setState(() {
+            _statusMessage = '❌ Token监听错误: $error';
+            _isWaitingForLogin = false;
+          });
+        }
+      },
+    );
+
+    // 启动TokenMonitor
+    TokenMonitor.startMonitoring(
+      timeout: const Duration(minutes: 3),
+      enableFallback: true,
+    );
+
+    setState(() {
+      _statusMessage = '🔍 Token监听器已启动，正在等待token请求...';
+    });
   }
 
   void _showErrorDialog(String title, String message) {
@@ -388,7 +548,7 @@ class _LoginWebViewPageImprovedState extends State<LoginWebViewPageImproved> {
                       child: ElevatedButton.icon(
                         onPressed: _manualCheckLogin,
                         icon: const Icon(Icons.login, size: 16),
-                        label: const Text('下方登录后，点此处检查登录状态'),
+                        label: Text(_isLoggedIn ? '已登录，请等待' : '先登录后，再点此处'),
                         style: ElevatedButton.styleFrom(
                           backgroundColor: Colors.green,
                           foregroundColor: Colors.white,
@@ -540,12 +700,13 @@ class _LoginWebViewPageImprovedState extends State<LoginWebViewPageImproved> {
             _loadingProgress = 1.0;
             _isLoading = false;
             _isWebViewReady = true;
-            _statusMessage = '页面加载完成，点击下方 检查登录状态';
+            _statusMessage = '页面加载完成，正在检测登录状态...';
           });
         }
         print('页面加载完成: $_currentUrl');
         
-        // 页面加载完成，等待用户手动检查登录状态
+        // 页面加载完成后自动检测登录状态
+        _autoCheckLoginAfterPageLoad();
       },
 
       onReceivedError: (controller, request, error) {
@@ -574,6 +735,62 @@ class _LoginWebViewPageImprovedState extends State<LoginWebViewPageImproved> {
         print('URL变化: $urlString');
         
         // 移除自动检测逻辑，改为用户手动确认
+      },
+
+      // 监听资源加载，捕获token请求
+      onLoadResource: (controller, resource) {
+        final url = resource.url.toString();
+        
+        // 通知TokenMonitor处理资源
+        TokenMonitor.handleTokenResource(url);
+        
+        // 检查是否是目标URL
+        if (url.contains('https://thor.weidian.com/skittles/share.getConfig')) {
+          print('🎯 发现目标URL: $url');
+          
+          if (url.contains('wdtoken=')) {
+            print('🔑 发现wdtoken参数');
+            
+            try {
+              final uri = Uri.parse(url);
+              final wdtoken = uri.queryParameters['wdtoken'];
+              
+              if (wdtoken != null && wdtoken.isNotEmpty) {
+                // 提取所有以"_"开头的参数
+                final underscoreParams = TokenExtractor.extractUnderscoreParams(url);
+                
+                print('✅ 成功获取wdtoken: ${wdtoken.substring(0, wdtoken.length.clamp(0, 20))}...');
+                print('📊 下划线参数: $underscoreParams');
+                
+                final result = <String, String>{
+                  'wdtoken': wdtoken,
+                  'token': wdtoken,
+                  'foundUrl': url,
+                  'source': 'onLoadResource',
+                  'timestamp': DateTime.now().millisecondsSinceEpoch.toString(),
+                  'platform': Platform.operatingSystem,
+                };
+                
+                result.addAll(underscoreParams);
+                
+                // 保存token到AuthService
+                AuthService().saveWdTokenAndParams(result).then((_) {
+                  print('Token已保存到AuthService');
+                  
+                  if (mounted) {
+                    setState(() {
+                      _statusMessage = '✅ 已获取token！继续获取cookies...';
+                    });
+                  }
+                }).catchError((e) {
+                  print('保存token失败: $e');
+                });
+              }
+            } catch (e) {
+              print('❌ URL解析错误: $e');
+            }
+          }
+        }
       },
     );
   }

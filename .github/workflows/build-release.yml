@@ -27,6 +27,9 @@ jobs:
       - name: Get dependencies
         run: flutter pub get
 
+      - name: Generate app icons
+        run: flutter pub run flutter_launcher_icons:main
+
       - name: Build Android APK
         run: flutter build apk --release
 
@@ -56,6 +59,9 @@ jobs:
 
       - name: Get dependencies
         run: flutter pub get
+
+      - name: Generate app icons
+        run: flutter pub run flutter_launcher_icons:main
 
       - name: Build Windows EXE
         run: flutter build windows --release
@@ -94,6 +100,9 @@ jobs:
           flutter pub get
           cd macos && pod install --repo-update && cd ..
 
+      - name: Generate app icons
+        run: flutter pub run flutter_launcher_icons:main
+
       # 清理 CocoaPods 缓存和临时文件
       - name: Clean CocoaPods cache
         run: |
@@ -124,7 +133,7 @@ jobs:
             find "$APP_PATH" -name "*.dSYM" -exec rm -rf {} + 2>/dev/null || true
             find "$APP_PATH" -path "*/Frameworks/FlutterMacOS.framework/Versions/A/Headers" -exec rm -rf {} + 2>/dev/null || true
             find "$APP_PATH" -path "*/Frameworks/FlutterMacOS.framework/Headers" -exec rm -rf {} + 2>/dev/null || true
-            
+          
             # 清理其他可能的调试文件
             find "$APP_PATH" -name "*.plist" -path "*/Contents/Resources/*" -not -name "Info.plist" -delete 2>/dev/null || true
           fi
