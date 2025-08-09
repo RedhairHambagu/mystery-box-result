@@ -1,838 +1,1081 @@
-import 'dart:async';
+import 'dart:convert' show JsonEncoder;
+import 'package:flutter/material.dart';
 import 'dart:io';
-import 'package:flutter_inappwebview/flutter_inappwebview.dart';
+import '../models/mystery_box_group.dart';
+import '../models/mystery_box_record.dart';
+import '../services/auth_service.dart';
+import '../services/mystery_box_service.dart';
+import '../utils/webview_helper_improved.dart';
+import '../widgets/mystery_box_group_widget.dart';
+import '../widgets/login_status_widget.dart';
+import 'login_webview_page_improved.dart';
 
-class WebViewHelperImproved {
-  static InAppWebViewController? _webViewController;
-  static HeadlessInAppWebView? _headlessWebView;
-  static bool _isInitialized = false;
-  static bool _isInitializing = false;
+class HomePageImproved extends StatefulWidget {
+  const HomePageImproved({super.key});
 
-  // Windows 平台兼容性检查
-  static bool get isWindowsSupported {
-    // Windows 平台现在支持基本的网络功能
-    return true;
+  @override
+  State<HomePageImproved> createState() => _HomePageImprovedState();
+}
+
+// 莫兰迪绿色系主题颜色
+class MorandiGreenTheme {
+  static const Color primary = Color(0xFF7D9D8E);      // 主绿色
+  static const Color primaryLight = Color(0xFF9BB3A8);  // 浅绿色
+  static const Color primaryDark = Color(0xFF5F7A6E);   // 深绿色
+  static const Color accent = Color(0xFF8FA89C);        // 强调色
+  static const Color background = Color(0xFFF2F5F3);    // 背景色
+  static const Color surface = Color(0xFFE8EDE9);       // 表面色
+  static const Color surfaceVariant = Color(0xFFDDE4DF); // 表面变体色
+}
+
+class _HomePageImprovedState extends State<HomePageImproved> {
+  final AuthService _authService = AuthService();
+  final MysteryBoxService _mysteryBoxService = MysteryBoxService();
+
+  bool _isLoggedIn = false;
+  bool _isLoading = false;
+  bool _canFetchItems = false;
+  bool _isWebViewSupported = false;
+  bool _isInitializing = true;
+  bool _isPreInitialized = false;
+  int _currentPage = 0;
+  List<MysteryBoxRecord> _allRecords = [];
+  List<MysteryBoxGroup> _mysteryBoxGroups = [];
+  String _statusMessage = '';
+  String _platformInfo = '';
+
+  @override
+  void initState() {
+    super.initState();
+    _initializeApp();
   }
 
-  static bool _hasWindowsWebViewSupport() {
-    // Windows 平台支持基本的 WebView 功能
-    return true;
+  bool _showDebugPanel = false;
+  Map<String, dynamic>? _debugInfo;
+
+  void _toggleDebugPanel() {
+    setState(() {
+      _showDebugPanel = !_showDebugPanel;
+    });
   }
 
-  // 预初始化WebView环境 - 改进 Android 预热机制
-  static Future<bool> preInitialize() async {
-    if (_isInitialized || _isInitializing) return _isInitialized;
-
-    _isInitializing = true;
+  Future<void> _runFullDiagnosis() async {
+    setState(() {
+      _statusMessage = '正在运行系统诊断...';
+    });
 
     try {
-      print('开始预初始化WebView环境 - 平台: ${Platform.operatingSystem}');
+      final diagnosis = await WebViewHelperImproved.getDebugInfo();
 
-      // Windows 平台特殊处理 - 启用基本功能
-      if (Platform.isWindows) {
-        print('检测到 Windows 平台，启用基本网络功能');
-        try {
-          // 测试基本的网络连接
-          final userAgent = _getSimpleUserAgent();
-          print('Windows 平台 UserAgent: $userAgent');
-          _isInitialized = true;
-          _isInitializing = false;
-          return true;
-        } catch (e) {
-          print('Windows 平台初始化警告: $e');
-          // 即使出错也标记为已初始化，允许使用基本功能
-          _isInitialized = true;
-          _isInitializing = false;
-          return true;
-        }
-      }
+      setState(() {
+        _debugInfo = diagnosis;
+        _statusMessage = '✅ 诊断完成，请查看调试面板详细信息';
+      });
 
-      // Android 平台执行真正的预热
-      if (Platform.isAndroid) {
-        print('🔥 Android 平台开始WebView预热...');
-        await _warmupWebViewAndroid();
+      print('=== 系统诊断结果 ===');
+      print(const JsonEncoder.withIndent('  ').convert(diagnosis));
+      print('=== 诊断结束 ===');
+
+    } catch (e) {
+      setState(() {
+        _statusMessage = '❌ 诊断过程中出现错误: $e';
+      });
+      print('诊断过程异常: $e');
+    }
+  }
+
+  Future<void> _initializeApp() async {
+    setState(() {
+      _isInitializing = true;
+      _statusMessage = '正在初始化应用...';
+    });
+
+    await _initializeWebView();
+    // 移除自动检查登录状态，改为用户手动检查
+
+    setState(() {
+      _isInitializing = false;
+      _statusMessage = '✅ 应用初始化完成，可以开始使用';
+    });
+  }
+
+  Future<void> _initializeWebView() async {
+    try {
+      setState(() {
+        _statusMessage = '正在预初始化WebView环境...\n如果加载较慢，可以点击"跳过初始化"直接使用';
+      });
+
+      // 使用改进的预初始化方法，带有超时控制
+      final initFuture = WebViewHelperImproved.preInitialize();
+      final timeoutFuture = Future.delayed(const Duration(seconds: 5));
+      
+      final result = await Future.any([
+        initFuture.then((value) => {'success': true, 'supported': value}),
+        timeoutFuture.then((_) => {'success': false, 'timeout': true}),
+      ]);
+
+      final platformInfo = WebViewHelperImproved.getPlatformInfo();
+      
+      bool isSupported = true; // 默认假设支持
+      if (result['success'] == true) {
+        isSupported = result['supported'] as bool;
       } else {
-        // 其他平台简化检查
-        try {
-          if (Platform.isWindows) {
-            // Windows 平台跳过 getDefaultUserAgent 调用
-            final userAgent = _getSimpleUserAgent();
-            print('WebView检查 (Windows预设): ${userAgent.isNotEmpty}');
-          } else {
-            final userAgentFuture = InAppWebViewController.getDefaultUserAgent()
-                .timeout(const Duration(seconds: 2));
-            final userAgent = await userAgentFuture;
-            print('WebView检查: ${userAgent != null && userAgent.isNotEmpty}');
-          }
-        } catch (e) {
-          print('WebView检查异常: $e');
-        }
+        // 超时情况，假设支持但给出提示
+        print('WebView预初始化超时，假设支持');
       }
 
-      _isInitialized = true;
-      _isInitializing = false;
-      print('✅ WebView环境预初始化完成');
-      return true;
-
-    } catch (e) {
-      print('❌ 预初始化失败: $e');
-      _isInitializing = false;
-      _isInitialized = true;
-      return true;
-    }
-  }
-
-  // Android WebView 预热机制
-  static Future<void> _warmupWebViewAndroid() async {
-    try {
-      print('🔥 开始 Android WebView 预热过程...');
-
-      // 第一步：创建并快速销毁一个简单的 WebView
-      final warmupWebView = HeadlessInAppWebView(
-        initialUrlRequest: URLRequest(url: WebUri('about:blank')),
-        initialSettings: InAppWebViewSettings(
-          javaScriptEnabled: true,
-          domStorageEnabled: true,
-          cacheEnabled: true,
-          hardwareAcceleration: true,
-          userAgent: _getSimpleUserAgent(),
-        ),
-        onWebViewCreated: (controller) {
-          print('🔥 预热WebView创建成功');
-        },
-        onLoadStop: (controller, url) {
-          print('🔥 预热页面加载完成');
-        },
-      );
-
-      // 启动预热WebView
-      await warmupWebView.run();
-
-      // 等待一小段时间让WebView完全初始化
-      await Future.delayed(const Duration(milliseconds: 1500));
-
-      // 预加载一些关键资源
-      final controller = await warmupWebView.webViewController;
-      if (controller != null) {
-        // 预执行一些 JavaScript 来初始化引擎
-        try {
-          await controller.evaluateJavascript(source: '''
-            console.log('WebView warmup test');
-            document.createElement('div');
-            window.performance = window.performance || {};
-            true;
-          ''');
-          print('🔥 JavaScript 引擎预热完成');
-        } catch (e) {
-          print('🔥 JavaScript 预热失败: $e');
-        }
-      }
-
-      // 销毁预热WebView
-      await warmupWebView.dispose();
-      print('🔥 预热WebView已销毁，预热完成');
-
-    } catch (e) {
-      print('🔥 Android WebView 预热失败: $e');
-      // 预热失败不影响后续使用
-    }
-  }
-
-  // 获取最小化设置，用于预热
-  static InAppWebViewSettings _getMinimalSettings() {
-    return InAppWebViewSettings(
-      javaScriptEnabled: true,
-      domStorageEnabled: true,
-      cacheEnabled: true,
-      clearCache: false,
-      hardwareAcceleration: true,
-      transparentBackground: false,
-      userAgent: _getSimpleUserAgent(),
-    );
-  }
-
-  // 获取优化的WebView设置
-  static InAppWebViewSettings getOptimizedSettings() {
-    return InAppWebViewSettings(
-      // 基础功能
-      javaScriptEnabled: true,
-      domStorageEnabled: true,
-      databaseEnabled: true,
-
-      // 缓存优化 - 关键改进
-      cacheEnabled: true,
-      clearCache: false,
-
-      // 性能优化
-      hardwareAcceleration: true,
-      transparentBackground: false,
-
-      // 平台特定优化 - 排除 Windows
-      useHybridComposition: Platform.isAndroid,
-      allowsBackForwardNavigationGestures: Platform.isIOS || Platform.isMacOS,
-
-      // 简化功能，减少初始化负担
-      supportZoom: false,
-      builtInZoomControls: false,
-      displayZoomControls: false,
-      mediaPlaybackRequiresUserGesture: true,
-      allowsInlineMediaPlayback: false,
-
-      // 优化的User Agent
-      userAgent: _getSimpleUserAgent(),
-    );
-  }
-
-  // 获取登录专用的WebView设置 - 禁用缓存确保清洁状态
-  static InAppWebViewSettings getLoginSettings() {
-    return InAppWebViewSettings(
-      // 基础功能
-      javaScriptEnabled: true,
-      domStorageEnabled: true,
-      databaseEnabled: true,
-
-      // 登录时禁用缓存，确保全新状态
-      cacheEnabled: false,
-      clearCache: true,
-
-      // 性能优化
-      hardwareAcceleration: true,
-      transparentBackground: false,
-
-      // 平台特定优化 - 排除 Windows
-      useHybridComposition: Platform.isAndroid,
-      allowsBackForwardNavigationGestures: Platform.isIOS || Platform.isMacOS,
-
-      // 简化功能
-      supportZoom: false,
-      builtInZoomControls: false,
-      displayZoomControls: false,
-      mediaPlaybackRequiresUserGesture: true,
-      allowsInlineMediaPlayback: false,
-
-      // 优化的User Agent
-      userAgent: _getSimpleUserAgent(),
-    );
-  }
-
-  static String _getSimpleUserAgent() {
-    switch (Platform.operatingSystem) {
-      case 'macos':
-        return 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
-      case 'windows':
-        return 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
-      case 'android':
-        return 'Mozilla/5.0 (Linux; Android 10) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36';
-      default:
-        return 'Mozilla/5.0 (compatible) AppleWebKit/537.36 Chrome/120.0.0.0 Safari/537.36';
-    }
-  }
-
-  // 快速创建WebView控制器 - 改进版本，添加 Windows 兼容性
-  static Future<InAppWebViewController?> createWebViewFast({
-    Duration timeout = const Duration(seconds: 15),
-  }) async {
-    try {
-      // Windows 平台检查 - 尝试创建 WebView
-      if (Platform.isWindows) {
-        print('Windows 平台尝试创建 HeadlessInAppWebView...');
-        // 继续执行，不直接返回 null
-      }
-
-      // 确保已预初始化
-      if (!_isInitialized) {
-        print('WebView未预初始化，开始快速初始化...');
-        final initialized = await preInitialize();
-        if (!initialized) {
-          print('快速初始化失败');
-          return null;
-        }
-      }
-
-      print('开始创建WebView控制器 - 平台: ${Platform.operatingSystem}');
-
-      final completer = Completer<InAppWebViewController?>();
-      Timer? timeoutTimer;
-
-      // 设置超时
-      timeoutTimer = Timer(timeout, () {
-        if (!completer.isCompleted) {
-          print('WebView创建超时');
-          completer.complete(null);
+      setState(() {
+        _isWebViewSupported = isSupported;
+        _isPreInitialized = isSupported;
+        _platformInfo = platformInfo;
+        
+        if (result['timeout'] == true) {
+          _statusMessage = '⚠️ 预初始化超时，但可以正常使用\n$platformInfo\n'
+              '建议：直接进行登录操作';
+        } else if (!isSupported) {
+          _statusMessage = '⚠️ WebView不可用 - $platformInfo\n请确保系统支持WebView功能';
+        } else {
+          _statusMessage = Platform.isMacOS
+              ? '✅ macOS WebView预初始化完成 - $platformInfo'
+              : '✅ WebView环境预初始化完成 - $platformInfo';
         }
       });
 
-      // 创建headless WebView
-      _headlessWebView = HeadlessInAppWebView(
-        initialUrlRequest: URLRequest(url: WebUri('about:blank')),
-        initialSettings: getOptimizedSettings(),
-
-        onWebViewCreated: (controller) {
-          _webViewController = controller;
-          print('WebView控制器创建成功');
-          timeoutTimer?.cancel();
-          if (!completer.isCompleted) {
-            completer.complete(controller);
-          }
-        },
-
-        onLoadStart: (controller, url) {
-          print('开始加载: $url');
-        },
-
-        onLoadStop: (controller, url) {
-          print('加载完成: $url');
-        },
-
-        onReceivedError: (controller, request, error) {
-          print('WebView错误: ${error.description}');
-          // 不要因为错误就返回null，让用户可以继续尝试
-        },
-
-        onReceivedHttpError: (controller, request, errorResponse) {
-          print('HTTP错误: ${errorResponse.statusCode}');
-        },
-      );
-
-      // 启动WebView
-      await _headlessWebView!.run();
-      return completer.future;
+      print('WebView预初始化完成 - 支持状态: $isSupported, 平台: $platformInfo');
 
     } catch (e) {
-      print('创建WebView失败: $e');
-      return null;
+      setState(() {
+        _isWebViewSupported = true; // 假设支持，让用户尝试
+        _isPreInitialized = true;
+        _statusMessage = '⚠️ 预初始化异常，但可以尝试使用: $e\n建议直接进行登录操作';
+      });
+      print('WebView预初始化失败: $e');
     }
   }
 
-  // 使用onLoadResource监听网络请求 - 优化 Android 首次加载
-  static Future<Map<String, String>?> extractTokenFromMysteryBoxImproved({
-    Duration timeout = const Duration(minutes: 3),
-  }) async {
-    // Windows 平台检查 - 允许执行
-    if (Platform.isWindows) {
-      print('⚠️ Windows 平台运行，可能存在兼容性问题');
-      // 继续执行，不直接返回 null
-    }
+  void _skipInitialization() {
+    setState(() {
+      _isInitializing = false;
+      _isWebViewSupported = true;
+      _isPreInitialized = true;
+      _statusMessage = '✅ 已跳过预初始化，可以直接使用\n${WebViewHelperImproved.getPlatformInfo()}';
+    });
+  }
 
-    final completer = Completer<Map<String, String>?>();
-    Timer? timeoutTimer;
-
+  Future<void> _checkLoginStatus() async {
     try {
-      print('🚀 开始提取wdtoken - 优化版本');
-      print('🎯 目标URL: https://thor.weidian.com/skittles/share.getConfig/*');
-
-      // 确保WebView已预热（特别是Android）
-      if (!_isInitialized) {
-        print('⚡ WebView未初始化，开始预热...');
-        await preInitialize();
-        // Android 预热后额外等待
-        if (Platform.isAndroid) {
-          print('⏱️ Android 预热完成，等待系统稳定...');
-          await Future.delayed(const Duration(milliseconds: 1000));
-        }
+      final isLoggedIn = await _authService.isLoggedIn();
+      
+      if (!isLoggedIn) {
+        setState(() {
+          _isLoggedIn = false;
+          _statusMessage = '未登录状态';
+        });
+        return;
       }
+      
+      // 验证Cookie是否有效
+      final isValid = await _authService.validateCookie();
 
-      // 设置总体超时 - Android 首次使用延长时间
-      final isFirstRun = !_isInitialized || _webViewController == null;
-      final actualTimeout = isFirstRun && Platform.isAndroid
-          ? const Duration(seconds: 15)  // 首次运行延长超时
-          : timeout;
-
-      timeoutTimer = Timer(actualTimeout, () {
-        if (!completer.isCompleted) {
-          print('⏰ Token提取超时 (${actualTimeout.inSeconds}秒)');
-          completer.complete(null);
+      setState(() {
+        _isLoggedIn = isValid;
+        if (!isValid) {
+          _statusMessage = '登录已过期，请重新登录';
+          print('登录状态检查：Cookie无效');
+        } else {
+          _statusMessage = '已登录状态';
+          print('登录状态检查：登录有效');
         }
       });
+    } catch (e) {
+      print('检查登录状态失败: $e');
+      setState(() {
+        _isLoggedIn = false;
+        _statusMessage = '检查登录状态失败';
+      });
+    }
+  }
 
-      print('⏱️ 超时设置: ${actualTimeout.inSeconds}秒 (首次运行: $isFirstRun)');
+  Future<void> _openLoginPage() async {
+    setState(() {
+      _statusMessage = '正在打开登录页面...';
+    });
 
-      // 渐进式延迟策略
-      Duration initialDelay;
-      if (Platform.isAndroid && isFirstRun) {
-        initialDelay = const Duration(seconds: 5); // 首次运行延长延迟
-        print('⏳ Android 首次运行，延长初始等待至 5 秒...');
+    try {
+      // 即使WebView支持状态不确定，也允许用户尝试
+      setState(() {
+        _statusMessage = _isWebViewSupported 
+            ? '正在启动登录界面...'
+            : '⚠️ WebView状态不确定，但允许尝试登录...';
+      });
+
+      final result = await Navigator.of(context).push<Map<String, String>>(
+        MaterialPageRoute(
+          builder: (context) => LoginWebViewPageImproved(
+            onLoginSuccess: (cookies) {
+              print('登录成功回调被调用，cookies数量: ${cookies.length}');
+              Navigator.of(context).pop(cookies);
+            },
+            onLoginCancel: () {
+              print('登录取消回调被调用');
+              Navigator.of(context).pop();
+            },
+          ),
+          settings: const RouteSettings(name: '/login_improved'),
+          fullscreenDialog: true,
+        ),
+      );
+
+      // 处理登录结果
+      if (result != null && result.isNotEmpty && result.length >4) {
+        final cookieString = result.entries
+            .map((e) => '${e.key}=${e.value}')
+            .join('; ');
+
+        print('准备保存cookies: ${cookieString.length}字符');
+        await _authService.saveCookie(cookieString);
+
+        setState(() {
+          _isLoggedIn = true;
+          _isWebViewSupported = true; // 如果登录成功，说明WebView是可用的
+          _statusMessage = '✅ 登录成功！请点击"获取盲盒信息"继续操作\n'
+              '- 已保存${result.length}个cookie\n'
+              '- 总长度: ${cookieString.length}字符';
+        });
+
+        _showSuccessSnackBar('登录成功，共保存${result.length}个cookie');
       } else {
-        initialDelay = const Duration(seconds: 2); // 后续运行缩短延迟
-        print('⏳ 后续运行，缩短等待至 2 秒...');
-      }
+        setState(() {
+          _statusMessage = result == null ? '登录已取消' : '登录失败，未获取到有效信息';
+        });
 
-      await Future.delayed(initialDelay);
-
-      // 销毁之前的WebView实例，确保干净启动
-      if (_headlessWebView != null) {
-        print('🧹 清理之前的WebView实例...');
-        try {
-          await _headlessWebView!.dispose();
-          _headlessWebView = null;
-          _webViewController = null;
-          await Future.delayed(const Duration(milliseconds: 500));
-        } catch (e) {
-          print('🧹 清理过程出现异常: $e');
+        if (result == null) {
+          print('用户取消了登录');
+        } else {
+          print('登录失败，结果为空');
+          // 不显示错误，给用户重试机会
+          setState(() {
+            _statusMessage = '登录未成功，可以重试或检查网络连接';
+          });
         }
       }
+    } catch (e) {
+      print('登录过程异常: $e');
+      setState(() {
+        _statusMessage = '⚠️ 登录过程中出现问题，但可以重试: $e';
+      });
+      // 不阻止用户重试
+    }
+  }
 
-      // 创建带有资源监听的HeadlessWebView
-      print('📱 创建新的WebView实例...');
-      _headlessWebView = HeadlessInAppWebView(
-        initialUrlRequest: URLRequest(
-          url: WebUri('https://h5.weidian.com/m/mystery-box/list.html#/'),
-          headers: {
-            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-            'Accept-Language': 'zh-CN,zh;q=0.9,en;q=0.8',
-            'Cache-Control': 'no-cache',
-            'Pragma': 'no-cache',
-          },
-        ),
-        // 使用优化设置，但启用缓存加速后续加载
-        initialSettings: InAppWebViewSettings(
-          javaScriptEnabled: true,
-          domStorageEnabled: true,
-          databaseEnabled: true,
-          cacheEnabled: true, // 启用缓存
-          clearCache: false,  // 不清除缓存
-          hardwareAcceleration: true,
-          transparentBackground: false,
-          useHybridComposition: Platform.isAndroid,
-          supportZoom: false,
-          builtInZoomControls: false,
-          displayZoomControls: false,
-          mediaPlaybackRequiresUserGesture: true,
-          allowsInlineMediaPlayback: false,
-          userAgent: _getSimpleUserAgent(),
-          // Android 特定优化
-          mixedContentMode: Platform.isAndroid
-              ? MixedContentMode.MIXED_CONTENT_COMPATIBILITY_MODE
-              : null,
-        ),
+  Future<void> _openMysteryBoxWindow() async {
+    if (!_isWebViewSupported) {
+      _showErrorSnackBar('当前平台不支持WebView功能');
+      return;
+    }
 
-        onWebViewCreated: (controller) {
-          _webViewController = controller;
-          print('📱 WebView创建成功，开始加载页面...');
-        },
+    setState(() {
+      _isLoading = true;
+      _statusMessage = '正在获取盲盒信息，请稍候...';
+    });
 
-        onLoadStart: (controller, url) {
-          print('🌐 开始加载: $url');
-        },
+    try {
+      setState(() {
+        _statusMessage = '正在访问盲盒页面并提取Token...';
+      });
 
-        onLoadStop: (controller, url) {
-          print('✅ 页面加载完成: $url');
+      // 使用改进的Token提取方法
+      final tokenResult = await WebViewHelperImproved.extractTokenFromMysteryBoxImproved(
+        timeout: Duration(minutes: Platform.isMacOS ? 4 : 3),
+      );
 
-          // 页面加载完成后，执行一些JavaScript来确保页面完全就绪
-          if (Platform.isAndroid) {
-            controller.evaluateJavascript(source: '''
-              console.log('Page fully loaded, waiting for resources...');
-              setTimeout(function() {
-                console.log('Resources should be loaded now');
-              }, 2000);
-            ''').catchError((e) {
-              print('JavaScript执行失败: $e');
-            });
+      if (tokenResult != null && tokenResult.isNotEmpty) {
+        String? token = tokenResult['token'];
+
+        print('Token提取结果: ${tokenResult.keys.join(', ')}');
+        print('Token长度: ${token?.length ?? 0}');
+        print('Token来源: ${tokenResult['source']}');
+
+        if (token != null && token.isNotEmpty && token != 'null') {
+          // 从URL中提取参数
+          final url = tokenResult['url'] ?? '';
+          final underscoreParams = WebViewHelperImproved.extractUnderscoreParams(url);
+
+          if (underscoreParams.isEmpty) {
+            underscoreParams['_'] = DateTime.now().millisecondsSinceEpoch.toString();
           }
-        },
 
-        // 关键：监听所有资源加载
-        onLoadResource: (controller, resource) {
-          final url = resource.url.toString();
+          await _authService.saveWdTokenAndParams(token, underscoreParams);
 
-          // 检查是否是目标URL
-          if (url.contains('https://thor.weidian.com/skittles/share.getConfig')) {
-            print('🎯 发现目标URL: $url');
+          setState(() {
+            _canFetchItems = true;
+            _statusMessage = '✅ 成功获取Token信息！\n'
+                // '- Token长度: ${token.length}\n'
+                // '- 来源: ${tokenResult['source']}\n'
+                // '- 参数数量: ${underscoreParams.length}\n'
+                '现在可以获取盲盒记录了';
+          });
 
-            if (url.contains('wdtoken=')) {
-              print('🔑 发现wdtoken参数');
+          _showSuccessSnackBar('成功获取Token信息 (${token}...)');
+        } else {
+          final errorDetails = StringBuffer();
+          errorDetails.writeln('获取Token失败:');
+          if (token == null || token.isEmpty) {
+            errorDetails.writeln('- Token为空');
+          } else if (token == 'null') {
+            errorDetails.writeln('- Token值为null');
+          }
+
+          if (tokenResult['jsError_1'] != null) {
+            errorDetails.writeln('- JavaScript错误: ${tokenResult['jsError_1']}');
+          }
+
+          errorDetails.writeln('- 尝试次数: ${tokenResult['attempt'] ?? 'unknown'}');
+          errorDetails.writeln('- 页面URL: ${tokenResult['url'] ?? 'unknown'}');
+
+          _showErrorSnackBar('未能获取到有效的Token');
+          setState(() {
+            _statusMessage = '❌ ${errorDetails.toString()}';
+          });
+        }
+      } else {
+        _showErrorSnackBar('获取盲盒信息失败，请检查网络连接');
+        setState(() {
+          _statusMessage = '❌ 获取盲盒页面信息失败\n'
+              '可能原因:\n'
+              '- 网络连接问题\n'
+              '- 登录状态已过期\n'
+              '- 页面加载超时';
+        });
+      }
+    } catch (e) {
+      _showErrorSnackBar('获取盲盒信息时出现错误: $e');
+      setState(() {
+        _statusMessage = '❌ 操作失败: $e';
+      });
+    } finally {
+      setState(() {
+        _isLoading = false;
+      });
+    }
+  }
+
+  Future<void> _fetchMysteryBoxRecords() async {
+    if (!_canFetchItems) {
+      _showErrorSnackBar('请先获取盲盒信息获取必要信息');
+      return;
+    }
+
+    setState(() {
+      _isLoading = true;
+      _statusMessage = '正在获取第${_currentPage + 1}页数据...';
+    });
+
+    try {
+      final newRecords = await _mysteryBoxService.fetchMysteryBoxRecords(_currentPage);
+
+      setState(() {
+        _allRecords.addAll(newRecords);
+        _currentPage++;
+      });
+
+      await _processRecordsIntoGroups();
+
+      setState(() {
+        _statusMessage = '✅ 成功获取${newRecords.length}条新记录\n'
+            '当前总计: ${_allRecords.length}条记录\n'
+            '分为: ${_mysteryBoxGroups.length}个盲盒组';
+      });
+
+      _showSuccessSnackBar('成功获取${newRecords.length}条新记录');
+
+    } catch (e) {
+      _showErrorSnackBar('获取盲盒记录失败: $e');
+      setState(() {
+        _statusMessage = '❌ 获取数据失败: $e';
+      });
+    } finally {
+      setState(() {
+        _isLoading = false;
+      });
+    }
+  }
+
+  Future<void> _processRecordsIntoGroups() async {
+    setState(() {
+      _statusMessage = '正在处理数据，生成盲盒组...';
+    });
+
+    final Map<String, List<MysteryBoxRecord>> groupedRecords = {};
+
+    for (final record in _allRecords) {
+      if (!groupedRecords.containsKey(record.itemId)) {
+        groupedRecords[record.itemId] = [];
+      }
+      groupedRecords[record.itemId]!.add(record);
+    }
+
+    final List<MysteryBoxGroup> groups = [];
+    int processedGroups = 0;
+
+    for (final entry in groupedRecords.entries) {
+      final itemId = entry.key;
+      final records = entry.value;
+
+      if (records.isNotEmpty) {
+        try {
+          setState(() {
+            _statusMessage = '正在处理盲盒组 ${++processedGroups}/${groupedRecords.length}...';
+          });
+
+          final boxInfo = await _mysteryBoxService.fetchBoxInfo(itemId, records.first.orderId);
+          final completeList = await _mysteryBoxService.fetchCompleteItemList(boxInfo['auth']!);
+
+          final group = MysteryBoxGroup.fromRecords(
+            itemId,
+            boxInfo['name']!,
+            boxInfo['auth']!,
+            records,
+            completeList,
+          );
+
+          groups.add(group);
+        } catch (e) {
+          print('处理群组 $itemId 时出错: $e');
+        }
+      }
+    }
+
+    setState(() {
+      _mysteryBoxGroups = groups;
+    });
+  }
+
+  Future<void> _resetData() async {
+    setState(() {
+      _allRecords.clear();
+      _mysteryBoxGroups.clear();
+      _currentPage = 0;
+      _statusMessage = '✅ 数据已重置，可以重新开始获取';
+    });
+
+    _showSuccessSnackBar('数据已重置');
+  }
+
+  Future<void> _clearWebViewData() async {
+    setState(() {
+      _statusMessage = '正在清理WebView数据...';
+    });
+
+    try {
+      await WebViewHelperImproved.clearAllCookies();
+      await WebViewHelperImproved.dispose();
+
+      if (Platform.isMacOS) {
+        await Future.delayed(const Duration(seconds: 2));
+      }
+
+      setState(() {
+        _statusMessage = '✅ WebView数据已清理';
+      });
+      _showSuccessSnackBar('WebView数据已清理');
+    } catch (e) {
+      _showErrorSnackBar('清理WebView数据失败: $e');
+      setState(() {
+        _statusMessage = '❌ 清理失败: $e';
+      });
+    }
+  }
+
+  Widget _buildDebugPanel() {
+    if (!_showDebugPanel) return const SizedBox.shrink();
+
+    return Container(
+      margin: const EdgeInsets.all(16),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: MorandiGreenTheme.surface,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: MorandiGreenTheme.accent, width: 1.5),
+        boxShadow: [
+          BoxShadow(
+            color: MorandiGreenTheme.primary.withOpacity(0.1),
+            blurRadius: 8,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Text(
+                '🔧 调试面板',
+                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+              ),
+              const Spacer(),
+              IconButton(
+                icon: const Icon(Icons.close),
+                onPressed: _toggleDebugPanel,
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              ElevatedButton.icon(
+                onPressed: _runFullDiagnosis,
+                icon: const Icon(Icons.bug_report),
+                label: const Text('运行诊断'),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: MorandiGreenTheme.accent,
+                  foregroundColor: Colors.white,
+                ),
+              ),
+              ElevatedButton.icon(
+                onPressed: () async {
+                  final result = await WebViewHelperImproved.healthCheck();
+                  _showSuccessSnackBar('健康检查: ${result ? "通过" : "失败"}');
+                },
+                icon: const Icon(Icons.health_and_safety),
+                label: const Text('健康检查'),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: MorandiGreenTheme.primary,
+                  foregroundColor: Colors.white,
+                ),
+              ),
+            ],
+          ),
+
+          const SizedBox(height: 16),
+
+          if (_debugInfo != null) ...[
+            const Text(
+              '诊断结果:',
+              style: TextStyle(fontWeight: FontWeight.bold),
+            ),
+            const SizedBox(height: 8),
+            Container(
+              width: double.infinity,
+              constraints: const BoxConstraints(maxHeight: 200),
+              child: SingleChildScrollView(
+                child: Text(
+                  const JsonEncoder.withIndent('  ').convert(_debugInfo),
+                  style: const TextStyle(
+                    fontFamily: 'monospace',
+                    fontSize: 10,
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Future<void> _restartWebView() async {
+    setState(() {
+      _isLoading = true;
+      _statusMessage = '正在重启WebView环境...';
+    });
+
+    try {
+      await WebViewHelperImproved.restart();
+
+      final isSupported = await WebViewHelperImproved.isWebViewAvailable();
+
+      setState(() {
+        _isWebViewSupported = isSupported;
+        _isPreInitialized = isSupported;
+        _statusMessage = isSupported
+            ? '✅ WebView重启成功'
+            : '❌ WebView重启后仍不可用';
+      });
+
+      _showSuccessSnackBar(isSupported ? 'WebView重启成功' : 'WebView重启失败');
+    } catch (e) {
+      _showErrorSnackBar('重启WebView失败: $e');
+      setState(() {
+        _statusMessage = '❌ 重启失败: $e';
+      });
+    } finally {
+      setState(() {
+        _isLoading = false;
+      });
+    }
+  }
+
+  void _showErrorSnackBar(String message) {
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(message),
+          backgroundColor: Colors.red,
+          behavior: SnackBarBehavior.floating,
+          duration: const Duration(seconds: 5),
+          action: SnackBarAction(
+            label: '确定',
+            textColor: Colors.white,
+            onPressed: () {},
+          ),
+        ),
+      );
+    }
+  }
+
+  void _showSuccessSnackBar(String message) {
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(message),
+          backgroundColor: Colors.green,
+          behavior: SnackBarBehavior.floating,
+          duration: const Duration(seconds: 3),
+        ),
+      );
+    }
+  }
+
+  Widget _buildStatusCard() {
+    Color cardColor;
+    Color textColor;
+    IconData icon;
+
+    if (_isInitializing) {
+      cardColor = MorandiGreenTheme.primaryLight.withOpacity(0.2);
+      textColor = MorandiGreenTheme.primaryDark;
+      icon = Icons.hourglass_empty;
+    } else if (!_isWebViewSupported) {
+      cardColor = Colors.red.withOpacity(0.1);
+      textColor = Colors.red[700]!;
+      icon = Icons.error;
+    } else if (_isLoggedIn && _canFetchItems) {
+      cardColor = MorandiGreenTheme.primary.withOpacity(0.2);
+      textColor = MorandiGreenTheme.primaryDark;
+      icon = Icons.check_circle;
+    } else if (_isLoggedIn) {
+      cardColor = MorandiGreenTheme.accent.withOpacity(0.2);
+      textColor = MorandiGreenTheme.primaryDark;
+      icon = Icons.warning;
+    } else if (_isPreInitialized) {
+      cardColor = MorandiGreenTheme.surface;
+      textColor = MorandiGreenTheme.primary;
+      icon = Icons.check;
+    } else {
+      cardColor = Colors.grey.withOpacity(0.1);
+      textColor = Colors.grey[700]!;
+      icon = Icons.info;
+    }
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: cardColor,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: textColor.withOpacity(0.3)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              if (_isLoading || _isInitializing) ...[
+                SizedBox(
+                  width: 20,
+                  height: 20,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2,
+                    valueColor: AlwaysStoppedAnimation<Color>(textColor),
+                  ),
+                ),
+                const SizedBox(width: 12),
+              ] else ...[
+                Icon(icon, color: textColor, size: 20),
+                const SizedBox(width: 12),
+              ],
+              Expanded(
+                child: Row(
+                  children: [
+                    Text(
+                      '系统状态',
+                      style: TextStyle(
+                        fontWeight: FontWeight.bold,
+                        color: textColor,
+                        fontSize: 16,
+                      ),
+                    ),
+                    if (_platformInfo.isNotEmpty) ...[
+                    const SizedBox(height: 8),
+                    Flexible(
+                      child: Text(
+                        '运行环境: $_platformInfo',
+                        style: TextStyle(
+                          color: textColor.withOpacity(0.8),
+                          fontSize: 9,
+
+                        ),maxLines: 3,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                  ],
+                  ],
+                ),
+              ),
+            ],
+          ),
+
+          const SizedBox(width: 12),
+          Text(
+            '- 📢获取盲盒信息请注意：如果抽的盲盒次数多，在没有出现新的盲盒组前，统计结果可能不全，请点击获取更多',
+            style: TextStyle(
+              color: textColor.withOpacity(0.7),
+              fontSize: 11,
+              fontStyle: FontStyle.italic,
+            ),
+            maxLines: 3,
+            overflow: TextOverflow.ellipsis,
+          ),
+          const SizedBox(width: 12),
+          Text(
+            '- 📱安卓用户：初次使用获取盲盒会超时。请尝试再次获取盲盒、刷新登录状态、退出重开',
+            style: TextStyle(
+              color: textColor.withOpacity(0.7),
+              fontSize: 11,
+              fontStyle: FontStyle.italic,
+            ),
+            maxLines: 3,
+            overflow: TextOverflow.ellipsis,
+          ),
+          const SizedBox(height: 12),
+          if (_statusMessage.isNotEmpty)
+            Text(
+              _statusMessage,
+              style: TextStyle(
+                color: textColor,
+                fontSize: 14,
+                height: 1.4,
+              ),
+            ),
+          // if (_isPreInitialized && !_isInitializing) ...[
+          //   const SizedBox(height: 8),
+          //   Text(
+          //     '✅ WebView已预初始化，登录速度更快',
+          //     style: TextStyle(
+          //       color: MorandiGreenTheme.primary,
+          //       fontSize: 12,
+          //       fontWeight: FontWeight.w500,
+          //     ),
+          //   ),
+          // ],
+        ],
+      ),
+    );
+  }
+
+  @override
+  void dispose() {
+    WebViewHelperImproved.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: MorandiGreenTheme.background,
+      appBar: AppBar(
+        title: Text('盲盒记录查询工具'),
+        elevation: 2,
+        backgroundColor: MorandiGreenTheme.primary,
+        foregroundColor: Colors.white,
+        actions: [
+          IconButton(
+            icon: Icon(_showDebugPanel ? Icons.bug_report : Icons.bug_report_outlined),
+            tooltip: '调试面板',
+            onPressed: _toggleDebugPanel,
+          ),
+          if (Platform.isMacOS && _isWebViewSupported)
+            IconButton(
+              icon: const Icon(Icons.refresh),
+              tooltip: '重启WebView',
+              onPressed: _isLoading ? null : _restartWebView,
+            ),
+          LoginStatusWidget(
+            isLoggedIn: _isLoggedIn,
+            onLogout: () async {
+              setState(() {
+                _statusMessage = '正在退出登录...';
+              });
 
               try {
-                final uri = Uri.parse(url);
-                final wdtoken = uri.queryParameters['wdtoken'];
-
-                if (wdtoken != null && wdtoken.isNotEmpty) {
-                  // 提取所有以"_"开头的参数
-                  final underscoreParams = Map.fromEntries(
-                    uri.queryParameters.entries.where((e) => e.key.startsWith('_')),
-                  );
-
-                  if (underscoreParams.isEmpty) {
-                    underscoreParams['_'] = DateTime.now().millisecondsSinceEpoch.toString();
-                  }
-
-                  print('✅ 成功获取wdtoken: ${wdtoken.substring(0, 20)}... (长度: ${wdtoken.length})');
-                  print('📊 下划线参数: $underscoreParams');
-
-                  final result = <String, String>{
-                    'wdtoken': wdtoken,
-                    'token': wdtoken,
-                    'foundUrl': url,
-                    'source': 'onLoadResource',
-                    'timestamp': DateTime.now().millisecondsSinceEpoch.toString(),
-                    'isFirstRun': isFirstRun.toString(),
-                    'platform': Platform.operatingSystem,
-                  };
-
-                  result.addAll(underscoreParams);
-
-                  timeoutTimer?.cancel();
-                  if (!completer.isCompleted) {
-                    completer.complete(result);
-                  }
-                }
+                // 1. 清除AuthService中的所有数据
+                await _authService.logout();
+                
+                // 2. 清除WebView数据和Cookie
+                await _clearWebViewData();
+                
+                // 3. 重置应用内的所有状态
+                setState(() {
+                  _isLoggedIn = false;
+                  _canFetchItems = false;
+                  _allRecords.clear();
+                  _mysteryBoxGroups.clear();
+                  _currentPage = 0;
+                  _statusMessage = '✅ 已退出登录，所有数据已清除';
+                });
+                
+                _showSuccessSnackBar('已退出登录');
+                print('登出完成：所有数据已清除，状态已重置');
+                
               } catch (e) {
-                print('❌ URL解析错误: $e');
+                print('登出过程出现异常: $e');
+                // 即使出现异常也要重置状态
+                setState(() {
+                  _isLoggedIn = false;
+                  _canFetchItems = false;
+                  _allRecords.clear();
+                  _mysteryBoxGroups.clear();
+                  _currentPage = 0;
+                  _statusMessage = '⚠️ 登出过程出现异常，但已重置本地状态';
+                });
+                _showErrorSnackBar('登出时出现异常，请重启应用确保完全清除');
               }
-            }
-          }
+            },
+          ),
+        ],
+      ),
+      body: CustomScrollView(
+        slivers: [
+          // 调试面板
+          if (_showDebugPanel)
+            SliverToBoxAdapter(child: _buildDebugPanel()),
+          
+          // 紧凑的操作面板
+          SliverToBoxAdapter(
+            child: Container(
+              padding: const EdgeInsets.all(12),
+              child: Card(
+                elevation: 4,
+                child: Padding(
+                  padding: const EdgeInsets.all(12),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      // 状态卡片
+                      _buildStatusCard(),
 
-          // 监听Cookie相关的请求
-          if (url.startsWith('https://logtake.weidian.com/h5collector/webcollect/3.0')) {
-            print('🍪 发现Cookie相关请求: $url');
-          }
-        },
+                      const SizedBox(height: 12),
 
-        onReceivedError: (controller, request, error) {
-          print('❌ WebView错误: ${error.description} (${error.type})');
-          // 不要因为错误就终止，继续等待
-        },
+                      // 操作按钮
+                      Wrap(
+                        spacing: 8,
+                        runSpacing: 6,
+                        children: [
+                          // 手动检查登录状态按钮
+                          ElevatedButton.icon(
+                            onPressed: (_isLoading || _isInitializing)
+                                ? null
+                                : () async {
+                                    setState(() {
+                                      _statusMessage = '正在检查登录状态...';
+                                    });
+                                    await _checkLoginStatus();
+                                  },
+                            icon: const Icon(Icons.refresh, size: 18),
+                            label: const Text('刷新登录状态'),
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: MorandiGreenTheme.primaryDark,
+                              foregroundColor: Colors.white,
+                              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                              textStyle: const TextStyle(fontSize: 14),
+                            ),
+                          ),
 
-        onReceivedHttpError: (controller, request, errorResponse) {
-          print('🌐 HTTP错误: ${errorResponse.statusCode} - ${errorResponse.reasonPhrase}');
-        },
+                          ElevatedButton.icon(
+                            onPressed: (_isLoggedIn || _isLoading || _isInitializing)
+                                ? null
+                                : _openLoginPage,
+                            icon: Icon(_isLoggedIn ? Icons.check_circle : Icons.login, size: 18),
+                            label: Text(_isLoggedIn ? '已登录' : '登录'),
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: _isLoggedIn ? MorandiGreenTheme.primary : MorandiGreenTheme.accent,
+                              foregroundColor: Colors.white,
+                              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                              textStyle: const TextStyle(fontSize: 14),
+                            ),
+                          ),
 
-        onConsoleMessage: (controller, consoleMessage) {
-          print('📝 Console [${consoleMessage.messageLevel}]: ${consoleMessage.message}');
-        },
+                          ElevatedButton.icon(
+                            onPressed: (!_isLoggedIn || _isLoading || _isInitializing)
+                                ? null
+                                : _openMysteryBoxWindow,
+                            icon: _isLoading && !_isInitializing
+                                ? const SizedBox(
+                              width: 14,
+                              height: 14,
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            )
+                                : const Icon(Icons.card_giftcard, size: 18),
+                            label: const Text('②获取盲盒信息'),
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: _canFetchItems ? MorandiGreenTheme.primary : MorandiGreenTheme.accent,
+                              foregroundColor: Colors.white,
+                              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                              textStyle: const TextStyle(fontSize: 14),
+                            ),
+                          ),
 
-        // 添加进度监听
-        onProgressChanged: (controller, progress) {
-          if (progress % 25 == 0) { // 每25%打印一次
-            print('📊 加载进度: $progress%');
-          }
-        },
-      );
+                          ElevatedButton.icon(
+                            onPressed: (!_canFetchItems || _isLoading || _isInitializing)
+                                ? null
+                                : _fetchMysteryBoxRecords,
+                            icon: _isLoading && !_isInitializing
+                                ? const SizedBox(
+                              width: 14,
+                              height: 14,
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            )
+                                : const Icon(Icons.download, size: 18),
+                            label: Text(_currentPage == 0 ? '③获取盲盒记录' : '④获取更多记录'),
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: MorandiGreenTheme.accent,
+                              foregroundColor: Colors.white,
+                              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                              textStyle: const TextStyle(fontSize: 14),
+                            ),
+                          ),
 
-      // 启动WebView
-      print('🚀 启动WebView...');
-      await _headlessWebView!.run();
+                          if (_allRecords.isNotEmpty) ...[
+                            ElevatedButton.icon(
+                              onPressed: (_isLoading || _isInitializing) ? null : _resetData,
+                              icon: const Icon(Icons.refresh, size: 18),
+                              label: const Text('重置数据'),
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: MorandiGreenTheme.primaryDark,
+                                foregroundColor: Colors.white,
+                                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                                textStyle: const TextStyle(fontSize: 14),
+                              ),
+                            ),
+                          ],
+                        ],
+                      ),
 
-      final result = await completer.future;
+                      // 数据统计
+                      if (_allRecords.isNotEmpty)
+                        Padding(
+                          padding: const EdgeInsets.only(top: 12),
+                          child: Container(
+                            padding: const EdgeInsets.all(8),
+                            decoration: BoxDecoration(
+                              color: MorandiGreenTheme.surface,
+                              borderRadius: BorderRadius.circular(6),
+                              border: Border.all(color: MorandiGreenTheme.primary, width: 1),
+                            ),
+                            child: Row(
+                              children: [
+                                Icon(Icons.analytics, color: MorandiGreenTheme.primary, size: 16),
+                                const SizedBox(width: 6),
+                                Expanded(
+                                  child: Text(
+                                    '数据统计: ${_allRecords.length} 条记录，${_mysteryBoxGroups.length} 个盲盒组',
+                                    style: TextStyle(
+                                      color: MorandiGreenTheme.primary,
+                                      fontWeight: FontWeight.w500,
+                                      fontSize: 13,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ),
 
-      // 记录性能信息
-      if (result != null) {
-        print('🎉 Token提取成功！耗时: ${DateTime.now().millisecondsSinceEpoch - int.parse(result['timestamp']!)}ms');
-      }
-
-      return result;
-
-    } catch (e) {
-      print('❌ 提取过程异常: $e');
-      timeoutTimer?.cancel();
-      if (!completer.isCompleted) {
-        completer.complete(null);
-      }
-      return null;
-    }
-  }
-
-  // Cookie操作方法 - 添加 Windows 兼容性
-  static Future<Map<String, String>> getCookies(String domain) async {
-    try {
-      // Windows 平台检查 - 尝试执行
-      if (Platform.isWindows) {
-        print('Windows 平台尝试 Cookie 操作...');
-        // 继续执行标准流程
-      }
-
-      final cookies = await CookieManager.instance().getCookies(
-        url: WebUri(domain),
-      );
-
-      final cookieMap = <String, String>{};
-      for (final cookie in cookies) {
-        cookieMap[cookie.name] = cookie.value;
-      }
-
-      return cookieMap;
-    } catch (e) {
-      print('获取Cookies失败: $e');
-      return {};
-    }
-  }
-
-  static Future<void> setCookies(String domain, Map<String, String> cookies) async {
-    try {
-      // Windows 平台检查 - 尝试执行
-      if (Platform.isWindows) {
-        print('Windows 平台尝试设置 Cookie...');
-        // 继续执行标准流程
-      }
-
-      for (final entry in cookies.entries) {
-        await CookieManager.instance().setCookie(
-          url: WebUri(domain),
-          name: entry.key,
-          value: entry.value,
-          domain: Uri.parse(domain).host,
-          path: '/',
-          isSecure: domain.startsWith('https'),
-          isHttpOnly: false,
-          sameSite: HTTPCookieSameSitePolicy.LAX,
-        );
-      }
-    } catch (e) {
-      print('设置Cookies失败: $e');
-      rethrow;
-    }
-  }
-
-  // 工具方法
-  static String? extractTokenFromUrl(String url) {
-    try {
-      final uri = Uri.parse(url);
-      return uri.queryParameters['token'] ??
-          uri.queryParameters['access_token'] ??
-          uri.queryParameters['wd_token'];
-    } catch (e) {
-      print('从URL提取token失败: $e');
-      return null;
-    }
-  }
-
-  static Map<String, String> extractUnderscoreParams(String url) {
-    try {
-      final uri = Uri.parse(url);
-      final Map<String, String> underscoreParams = {};
-
-      uri.queryParameters.forEach((key, value) {
-        if (key.startsWith('_')) {
-          underscoreParams[key] = value;
-        }
-      });
-
-      if (underscoreParams.isEmpty) {
-        underscoreParams['_'] = DateTime.now().millisecondsSinceEpoch.toString();
-      }
-
-      return underscoreParams;
-    } catch (e) {
-      print('提取下划线参数失败: $e');
-      return {'_': DateTime.now().millisecondsSinceEpoch.toString()};
-    }
-  }
-
-  // 清理和维护方法
-  static Future<void> dispose() async {
-    try {
-      print('开始清理WebView资源');
-
-      if (_headlessWebView != null) {
-        await _headlessWebView!.dispose();
-        _headlessWebView = null;
-      }
-
-      _webViewController = null;
-      _isInitialized = false;
-      _isInitializing = false;
-
-      print('WebView资源清理完成');
-    } catch (e) {
-      print('清理WebView资源失败: $e');
-    }
-  }
-
-  static Future<void> clearAllCookies() async {
-    try {
-      // Windows 平台检查 - 尝试执行
-      if (Platform.isWindows) {
-        print('Windows 平台尝试清理 Cookie...');
-        // 继续执行标准流程
-      }
-
-      // 清除所有域名的Cookies
-      await CookieManager.instance().deleteAllCookies();
-
-      // 特别清除微店相关域名的Cookies
-      final weidianDomains = [
-        'https://weidian.com',
-        'https://h5.weidian.com',
-        'https://thor.weidian.com',
-        'https://logtake.weidian.com',
-        'https://passport.weidian.com',
-      ];
-
-      for (final domain in weidianDomains) {
-        try {
-          await CookieManager.instance().deleteCookies(url: WebUri(domain));
-        } catch (e) {
-          print('清除$domain域名Cookies失败: $e');
-        }
-      }
-
-      print('所有Cookies已彻底清除');
-    } catch (e) {
-      print('清除Cookies失败: $e');
-      rethrow;
-    }
-  }
-
-  static Future<void> restart() async {
-    print('重启WebView环境');
-    await dispose();
-    await Future.delayed(const Duration(milliseconds: 1000));
-    await preInitialize();
-  }
-
-  // 健康检查 - 添加 Windows 兼容性
-  static Future<bool> healthCheck() async {
-    try {
-      // Windows 平台检查 - 健康检查
-      if (Platform.isWindows) {
-        print('Windows 平台健康检查：测试基础功能');
-        // 执行实际的健康检查而不是直接返回 true
-      }
-
-      if (!_isInitialized) {
-        final initialized = await preInitialize();
-        if (!initialized) return false;
-      }
-
-      final controller = await createWebViewFast(
-          timeout: const Duration(seconds: 10)
-      );
-
-      if (controller == null) return false;
-
-      // 简单测试
-      await controller.loadUrl(urlRequest: URLRequest(url: WebUri('about:blank')));
-      await Future.delayed(const Duration(seconds: 2));
-
-      final url = await controller.getUrl();
-      return url != null;
-    } catch (e) {
-      print('健康检查失败: $e');
-      // Windows 平台即使出错也认为基础功能可用
-      return Platform.isWindows;
-    }
-  }
-
-  // 检查WebView可用性 - 改进 Windows 支持
-  static Future<bool> isWebViewAvailable() async {
-    try {
-      // Windows 平台特殊处理
-      if (Platform.isWindows) {
-        print('Windows 平台：使用预设 UserAgent 进行可用性检查');
-        // Windows 平台 flutter_inappwebview 不支持 getDefaultUserAgent
-        final userAgent = _getSimpleUserAgent();
-        return userAgent.isNotEmpty;
-      }
-
-      final userAgent = await InAppWebViewController.getDefaultUserAgent();
-      return userAgent != null && userAgent.isNotEmpty;
-    } catch (e) {
-      print('WebView可用性检查失败: $e');
-      // macOS和Windows可能报错但仍可用
-      return Platform.isMacOS || Platform.isWindows;
-    }
-  }
-
-  // 平台信息
-  static String getPlatformInfo() {
-    final platform = Platform.operatingSystem;
-    final version = Platform.operatingSystemVersion;
-    final support = isWindowsSupported ? '(支持)' : '(受限)';
-    return '$platform $version $support';
-  }
-
-  // 调试信息 - 添加 Windows 特殊信息
-  static Future<Map<String, dynamic>> getDebugInfo() async {
-    final info = <String, dynamic>{};
-
-    info['platform'] = Platform.operatingSystem;
-    info['platformVersion'] = Platform.operatingSystemVersion;
-    info['isInitialized'] = _isInitialized;
-    info['isInitializing'] = _isInitializing;
-    info['hasWebViewController'] = _webViewController != null;
-    info['hasHeadlessWebView'] = _headlessWebView != null;
-    info['timestamp'] = DateTime.now().toIso8601String();
-    info['isWindowsSupported'] = isWindowsSupported;
-
-    // Windows 平台特殊处理
-    if (Platform.isWindows) {
-      info['windowsNote'] = 'Windows 平台基础功能已启用';
-      info['userAgent'] = _getSimpleUserAgent();
-      info['userAgentSource'] = '预设值';
-      info['networkSupport'] = '已启用';
-    } else {
-      try {
-        info['userAgent'] = await InAppWebViewController.getDefaultUserAgent();
-        info['userAgentSource'] = '系统获取';
-      } catch (e) {
-        info['userAgentError'] = e.toString();
-        info['userAgent'] = _getSimpleUserAgent();
-        info['userAgentSource'] = '预设值（获取失败）';
-      }
-    }
-
-    try {
-      info['webViewAvailable'] = await isWebViewAvailable();
-    } catch (e) {
-      info['webViewAvailableError'] = e.toString();
-    }
-
-    return info;
-  }
-
-  // 应用启动时预热 - 推荐在应用启动时调用
-  static Future<void> preWarmup() async {
-    if (Platform.isAndroid && !_isInitialized) {
-      print('🔥 应用启动预热开始...');
-      try {
-        // 在后台线程预热，不阻塞主线程
-        unawaited(preInitialize());
-        print('🔥 应用启动预热已开始（后台执行）');
-      } catch (e) {
-        print('🔥 应用启动预热失败: $e');
-      }
-    }
-  }
-
-  // 智能重试机制 - 用于处理首次失败的情况
-  static Future<Map<String, String>?> extractTokenWithRetry({
-    int maxRetries = 2,
-    Duration baseTimeout = const Duration(minutes: 3),
-  }) async {
-    int attempts = 0;
-
-    while (attempts < maxRetries) {
-      attempts++;
-      final isFirstAttempt = attempts == 1;
-
-      print('🔄 尝试 $attempts/$maxRetries ${isFirstAttempt ? "(首次)" : "(重试)"}');
-
-      // 首次尝试使用更长的超时时间
-      final timeout = isFirstAttempt && Platform.isAndroid
-          ? const Duration(minutes: 5)
-          : baseTimeout;
-
-      final result = await extractTokenFromMysteryBoxImproved(timeout: timeout);
-
-      if (result != null) {
-        print('✅ 第 $attempts 次尝试成功');
-        return result;
-      }
-
-      if (attempts < maxRetries) {
-        print('❌ 第 $attempts 次尝试失败，准备重试...');
-
-        // 重试前清理和重置
-        await dispose();
-        await Future.delayed(const Duration(seconds: 2));
-
-        // 重新初始化
-        await preInitialize();
-        await Future.delayed(const Duration(seconds: 1));
-      }
-    }
-
-    print('❌ 所有尝试均失败 ($maxRetries/$maxRetries)');
-    return null;
+          // 数据展示区域
+          _mysteryBoxGroups.isEmpty
+              ? SliverFillRemaining(
+                  child: Center(
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(
+                          _isInitializing
+                              ? Icons.hourglass_empty
+                              : !_isWebViewSupported
+                              ? Icons.error_outline
+                              : _isPreInitialized
+                              ? Icons.inbox
+                              : Icons.pending,
+                          size: 64,
+                          color: Colors.grey[400],
+                        ),
+                        const SizedBox(height: 16),
+                        Text(
+                          _isInitializing
+                              ? '正在初始化应用...\n如果加载较慢，可以点击下方按钮跳过'
+                              : !_isWebViewSupported
+                              ? '当前平台WebView不可用\n无法使用完整功能\n\n${Platform.isMacOS ? '请确保macOS系统版本支持WebView' : '请检查系统WebView组件'}'
+                              : _isPreInitialized
+                              ? '暂无数据，请按照上方说明操作'
+                              : '正在准备WebView环境...',
+                          textAlign: TextAlign.center,
+                          style: TextStyle(
+                            color: Colors.grey[600],
+                            fontSize: 16,
+                            height: 1.4,
+                          ),
+                        ),
+                        if (_isInitializing) ...[
+                          const SizedBox(height: 24),
+                          ElevatedButton.icon(
+                            onPressed: _skipInitialization,
+                            icon: const Icon(Icons.skip_next, size: 20),
+                            label: const Text('跳过初始化'),
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: MorandiGreenTheme.accent,
+                              foregroundColor: Colors.white,
+                              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                            ),
+                          ),
+                          const SizedBox(height: 8),
+                          Text(
+                            '跳过后可以直接使用登录功能',
+                            style: TextStyle(
+                              color: Colors.grey[500],
+                              fontSize: 12,
+                            ),
+                          ),
+                        ],
+                      ],
+                    ),
+                  ),
+                )
+              : SliverList(
+                  delegate: SliverChildBuilderDelegate(
+                    (context, index) {
+                      return Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                        child: MysteryBoxGroupWidget(
+                          group: _mysteryBoxGroups[index],
+                        ),
+                      );
+                    },
+                    childCount: _mysteryBoxGroups.length,
+                  ),
+                ),
+        ],
+      ),
+    );
   }
 }
