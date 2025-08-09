@@ -759,7 +759,7 @@ class _LoginWebViewPageImprovedState extends State<LoginWebViewPageImproved> {
                 // 提取所有以"_"开头的参数
                 final underscoreParams = TokenExtractor.extractUnderscoreParams(url);
                 
-                print('✅ 成功获取wdtoken: ${wdtoken.substring(0, wdtoken.length.clamp(0, 20))}...');
+                print('✅ 成功获取wdtoken: ${wdtoken}...');
                 print('📊 下划线参数: $underscoreParams');
                 
                 final result = <String, String>{

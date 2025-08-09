@@ -272,7 +272,7 @@ class TokenExtractor {
   // 智能重试机制
   static Future<Map<String, String>?> extractTokenWithRetry({
     int maxRetries = 2,
-    Duration baseTimeout = const Duration(minutes: 3),
+    Duration baseTimeout = const Duration(minutes: 2),
   }) async {
     int attempts = 0;
 
@@ -284,7 +284,7 @@ class TokenExtractor {
 
       // 首次尝试使用更长的超时时间
       final timeout = isFirstAttempt && Platform.isAndroid
-          ? const Duration(minutes: 5)
+          ? const Duration(minutes: 3)
           : baseTimeout;
 
       final result = await extractToken(timeout: timeout);

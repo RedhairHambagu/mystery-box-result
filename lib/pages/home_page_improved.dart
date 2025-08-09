@@ -6,6 +6,7 @@ import '../models/mystery_box_record.dart';
 import '../services/auth_service.dart';
 import '../services/mystery_box_service.dart';
 import '../utils/webview_helper_improved.dart';
+import '../utils/token_extractor.dart';
 import '../widgets/mystery_box_group_widget.dart';
 import '../widgets/login_status_widget.dart';
 import 'login_webview_page_improved.dart';
@@ -323,7 +324,7 @@ class _HomePageImprovedState extends State<HomePageImproved> {
 
 
 
-  // 获取Token的方法
+  // 获取Token的方法 - 智能化处理不同平台
   Future<void> _extractToken() async {
     if (!_isLoggedIn) {
       _showErrorSnackBar('请先登录');
@@ -331,11 +332,29 @@ class _HomePageImprovedState extends State<HomePageImproved> {
     }
 
     setState(() {
-      _statusMessage = '正在打开token获取页面...';
+      _isGettingToken = true;
+      _statusMessage = '正在获取Token...';
     });
 
     try {
-      // 打开token获取页面，类似登录页面
+      // 首先尝试直接从后台获取token（使用headless WebView）
+      if (Platform.isAndroid || Platform.isWindows) {
+        setState(() {
+          _statusMessage = '🔄 ${Platform.isAndroid ? "Android" : "Windows"}平台：首先尝试后台获取Token...';
+        });
+        
+        final result = await _tryBackgroundTokenExtraction();
+        if (result != null && result.containsKey('wdtoken')) {
+          await _handleTokenSuccess(result);
+          return;
+        }
+        
+        setState(() {
+          _statusMessage = '⚠️ 后台获取失败，开启可视化获取模式...';
+        });
+      }
+
+      // 如果后台获取失败，或者是其他平台，使用可视化WebView
       final result = await Navigator.of(context).push<Map<String, String>>(
         MaterialPageRoute(
           builder: (context) => TokenWebViewPage(
@@ -355,24 +374,7 @@ class _HomePageImprovedState extends State<HomePageImproved> {
 
       // 处理token获取结果
       if (result != null && result.containsKey('wdtoken')) {
-        final token = result['wdtoken']!;
-        final tokenLength = token.length;
-        
-        // 保存token到AuthService
-        await _authService.saveWdTokenAndParams(result);
-        
-        setState(() {
-          _hasToken = true;
-          _canFetchItems = true;
-          _statusMessage = '✅ 成功获取Token！\n'
-              '- Token长度: ${tokenLength}字符\n'
-              '- 来源: ${result['source'] ?? 'web_page'}\n'
-              '现在可以获取盲盒记录';
-        });
-        
-        _showSuccessSnackBar('Token获取成功，长度: ${tokenLength}字符');
-        print('✅ Token获取成功: ${token.substring(0, token.length.clamp(0, 20))}...');
-        
+        await _handleTokenSuccess(result);
       } else {
         setState(() {
           _statusMessage = result == null ? 'Token获取已取消' : '❌ 未能获取到有效Token';
@@ -391,7 +393,60 @@ class _HomePageImprovedState extends State<HomePageImproved> {
         _statusMessage = '❌ Token获取过程中出现错误: $e';
       });
       _showErrorSnackBar('Token获取失败: $e');
+    } finally {
+      setState(() {
+        _isGettingToken = false;
+      });
     }
+  }
+
+  // 后台Token获取方法（适用于Android和Windows）
+  Future<Map<String, String>?> _tryBackgroundTokenExtraction() async {
+    try {
+      // 设置cookies到WebView环境
+      await _setCookiesForMysteryBox();
+      
+      // 使用TokenExtractor进行后台提取
+      final result = await TokenExtractor.extractTokenWithRetry(
+        maxRetries: 2,
+        baseTimeout: Platform.isAndroid 
+            ? const Duration(minutes: 2)
+            : const Duration(minutes: 1),
+      );
+      
+      if (result != null) {
+        print('🎉 后台Token获取成功: ${result['platform']}');
+        return result;
+      } else {
+        print('❌ 后台Token获取失败');
+        return null;
+      }
+    } catch (e) {
+      print('❌ 后台Token获取异常: $e');
+      return null;
+    }
+  }
+
+  // 处理Token获取成功的统一方法
+  Future<void> _handleTokenSuccess(Map<String, String> result) async {
+    final token = result['wdtoken']!;
+    final tokenLength = token.length;
+    
+    // 保存token到AuthService
+    await _authService.saveWdTokenAndParams(result);
+    
+    setState(() {
+      _hasToken = true;
+      _canFetchItems = true;
+      _statusMessage = '✅ 成功获取Token！\n'
+          '- Token长度: ${tokenLength}字符\n'
+          '- 来源: ${result['source'] ?? 'unknown'}\n'
+          '- 平台: ${result['platform'] ?? Platform.operatingSystem}\n'
+          '现在可以获取盲盒记录';
+    });
+    
+    _showSuccessSnackBar('Token获取成功！来源: ${result['source']}');
+    print('✅ Token获取成功: $token (长度: ${tokenLength})');
   }
 
   // 新增：为盲盒页面设置cookies的方法
@@ -874,6 +929,17 @@ class _HomePageImprovedState extends State<HomePageImproved> {
           const SizedBox(width: 12),
           Text(
             '- 📱安卓用户：初次使用获取盲盒会超时。请尝试再次获取盲盒、刷新登录状态、退出重开',
+            style: TextStyle(
+              color: textColor.withOpacity(0.7),
+              fontSize: 11,
+              fontStyle: FontStyle.italic,
+            ),
+            maxLines: 3,
+            overflow: TextOverflow.ellipsis,
+          ),
+          const SizedBox(width: 12),
+          Text(
+            '- ⚠️重要提醒：抽新盲盒并且点击过获取记录，再次点击更多会有重复错误数据，请重置数据',
             style: TextStyle(
               color: textColor.withOpacity(0.7),
               fontSize: 11,
