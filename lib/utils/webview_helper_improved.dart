@@ -10,16 +10,145 @@ class WebViewHelperImproved {
 
   // Windows 平台兼容性检查
   static bool get isWindowsSupported {
-    // Windows 平台现在支持基本的网络功能
     return true;
   }
 
   static bool _hasWindowsWebViewSupport() {
-    // Windows 平台支持基本的 WebView 功能
     return true;
   }
 
-  // 预初始化WebView环境 - 改进 Android 预热机制
+  // 获取平台信息
+  static String getPlatformInfo() {
+    final platform = Platform.operatingSystem;
+    final version = Platform.operatingSystemVersion;
+
+    switch (platform) {
+      case 'windows':
+        return 'Windows (${version}) - WebView2';
+      case 'macos':
+        return 'macOS (${version}) - Safari WebKit';
+      case 'android':
+        return 'Android (${version}) - Chrome WebView';
+      case 'ios':
+        return 'iOS (${version}) - Safari WebKit';
+      case 'linux':
+        return 'Linux (${version}) - WebKit';
+      default:
+        return '${platform.toUpperCase()} (${version})';
+    }
+  }
+
+  // 检查WebView是否可用
+  static Future<bool> isWebViewAvailable() async {
+    try {
+      if (Platform.isWindows) {
+        return _hasWindowsWebViewSupport();
+      }
+
+      if (Platform.isAndroid) {
+        // Android平台检查WebView可用性
+        try {
+          // 尝试创建一个临时的WebView来检测可用性
+          final testWebView = HeadlessInAppWebView(
+            initialUrlRequest: URLRequest(url: WebUri('about:blank')),
+            initialSettings: InAppWebViewSettings(
+              javaScriptEnabled: false,
+              cacheEnabled: false,
+            ),
+          );
+
+          await testWebView.run();
+          await Future.delayed(const Duration(milliseconds: 500));
+          await testWebView.dispose();
+
+          print('Android WebView可用性检查：通过');
+          return true;
+        } catch (e) {
+          print('Android WebView可用性检查失败: $e');
+          return false;
+        }
+      }
+
+      // 对于iOS和macOS平台，尝试获取默认UserAgent来检测
+      try {
+        final userAgent = await InAppWebViewController.getDefaultUserAgent()
+            .timeout(const Duration(seconds: 3));
+        final isAvailable = userAgent != null && userAgent.isNotEmpty;
+        print('${Platform.operatingSystem} WebView可用性检查: ${isAvailable ? '通过' : '失败'}');
+        return isAvailable;
+      } catch (e) {
+        print('检查WebView可用性时出现异常: $e');
+        // 对于iOS和macOS，假设WebView通常是可用的
+        return Platform.isIOS || Platform.isMacOS;
+      }
+    } catch (e) {
+      print('WebView可用性检查失败: $e');
+      // 为不同平台返回合理的默认值
+      return Platform.isWindows || Platform.isMacOS || Platform.isIOS;
+    }
+  }
+
+  // 重启WebView环境
+  static Future<void> restart() async {
+    try {
+      print('正在重启WebView环境...');
+
+      // 清理现有资源
+      await dispose();
+
+      // 等待一段时间确保资源完全释放
+      await Future.delayed(const Duration(seconds: 1));
+
+      // 清除所有缓存和Cookie
+      try {
+        await clearAllCookies();
+      } catch (e) {
+        print('清除Cookie时出现警告: $e');
+      }
+
+      // 重新初始化
+      _isInitialized = false;
+      _isInitializing = false;
+
+      await preInitialize();
+
+      print('WebView环境重启完成');
+    } catch (e) {
+      print('重启WebView环境失败: $e');
+      rethrow;
+    }
+  }
+
+  // 提取URL中的下划线参数
+  static Map<String, String> extractUnderscoreParams(String url) {
+    final Map<String, String> params = {};
+
+    try {
+      final uri = Uri.parse(url);
+
+      // 提取所有以下划线开头的查询参数
+      for (final entry in uri.queryParameters.entries) {
+        if (entry.key.startsWith('_')) {
+          params[entry.key] = entry.value;
+        }
+      }
+
+      // 如果没有找到下划线参数，添加默认的时间戳参数
+      if (params.isEmpty) {
+        params['_'] = DateTime.now().millisecondsSinceEpoch.toString();
+      }
+
+      print('提取到的下划线参数: ${params.keys.join(', ')}');
+    } catch (e) {
+      print('提取下划线参数时出错: $e');
+      // 返回默认参数
+      params['_'] = DateTime.now().millisecondsSinceEpoch.toString();
+    }
+
+    return params;
+  }
+
+  // 预初始化WebView环境
   static Future<bool> preInitialize() async {
     if (_isInitialized || _isInitializing) return _isInitialized;
 
@@ -28,11 +157,9 @@ class WebViewHelperImproved {
     try {
       print('开始预初始化WebView环境 - 平台: ${Platform.operatingSystem}');
 
-      // Windows 平台特殊处理 - 启用基本功能
       if (Platform.isWindows) {
         print('检测到 Windows 平台，启用基本网络功能');
         try {
-          // 测试基本的网络连接
           final userAgent = _getSimpleUserAgent();
           print('Windows 平台 UserAgent: $userAgent');
           _isInitialized = true;
@@ -40,22 +167,18 @@ class WebViewHelperImproved {
           return true;
         } catch (e) {
           print('Windows 平台初始化警告: $e');
-          // 即使出错也标记为已初始化，允许使用基本功能
           _isInitialized = true;
           _isInitializing = false;
           return true;
         }
       }
 
-      // Android 平台执行真正的预热
       if (Platform.isAndroid) {
         print('🔥 Android 平台开始WebView预热...');
         await _warmupWebViewAndroid();
       } else {
-        // 其他平台简化检查
         try {
           if (Platform.isWindows) {
-            // Windows 平台跳过 getDefaultUserAgent 调用
             final userAgent = _getSimpleUserAgent();
             print('WebView检查 (Windows预设): ${userAgent.isNotEmpty}');
           } else {
@@ -87,7 +210,6 @@ class WebViewHelperImproved {
     try {
       print('🔥 开始 Android WebView 预热过程...');
 
-      // 第一步：创建并快速销毁一个简单的 WebView
       final warmupWebView = HeadlessInAppWebView(
         initialUrlRequest: URLRequest(url: WebUri('about:blank')),
         initialSettings: InAppWebViewSettings(
@@ -105,16 +227,11 @@ class WebViewHelperImproved {
         },
       );
 
-      // 启动预热WebView
       await warmupWebView.run();
-
-      // 等待一小段时间让WebView完全初始化
       await Future.delayed(const Duration(milliseconds: 1500));
 
-      // 预加载一些关键资源
       final controller = await warmupWebView.webViewController;
       if (controller != null) {
-        // 预执行一些 JavaScript 来初始化引擎
         try {
           await controller.evaluateJavascript(source: '''
             console.log('WebView warmup test');
@@ -128,90 +245,34 @@ class WebViewHelperImproved {
         }
       }
 
-      // 销毁预热WebView
       await warmupWebView.dispose();
       print('🔥 预热WebView已销毁，预热完成');
 
     } catch (e) {
       print('🔥 Android WebView 预热失败: $e');
-      // 预热失败不影响后续使用
     }
-  }
-
-  // 获取最小化设置，用于预热
-  static InAppWebViewSettings _getMinimalSettings() {
-    return InAppWebViewSettings(
-      javaScriptEnabled: true,
-      domStorageEnabled: true,
-      cacheEnabled: true,
-      clearCache: false,
-      hardwareAcceleration: true,
-      transparentBackground: false,
-      userAgent: _getSimpleUserAgent(),
-    );
   }
 
   // 获取优化的WebView设置
   static InAppWebViewSettings getOptimizedSettings() {
     return InAppWebViewSettings(
-      // 基础功能
       javaScriptEnabled: true,
       domStorageEnabled: true,
       databaseEnabled: true,
-
-      // 缓存优化 - 关键改进
       cacheEnabled: true,
       clearCache: false,
-
-      // 性能优化
       hardwareAcceleration: true,
       transparentBackground: false,
-
-      // 平台特定优化 - 排除 Windows
       useHybridComposition: Platform.isAndroid,
       allowsBackForwardNavigationGestures: Platform.isIOS || Platform.isMacOS,
-
-      // 简化功能，减少初始化负担
       supportZoom: false,
       builtInZoomControls: false,
       displayZoomControls: false,
       mediaPlaybackRequiresUserGesture: true,
       allowsInlineMediaPlayback: false,
-
-      // 优化的User Agent
       userAgent: _getSimpleUserAgent(),
-    );
-  }
-
-  // 获取登录专用的WebView设置 - 禁用缓存确保清洁状态
-  static InAppWebViewSettings getLoginSettings() {
-    return InAppWebViewSettings(
-      // 基础功能
-      javaScriptEnabled: true,
-      domStorageEnabled: true,
-      databaseEnabled: true,
-
-      // 登录时禁用缓存，确保全新状态
-      cacheEnabled: false,
-      clearCache: true,
-
-      // 性能优化
-      hardwareAcceleration: true,
-      transparentBackground: false,
-
-      // 平台特定优化 - 排除 Windows
-      useHybridComposition: Platform.isAndroid,
-      allowsBackForwardNavigationGestures: Platform.isIOS || Platform.isMacOS,
-
-      // 简化功能
-      supportZoom: false,
-      builtInZoomControls: false,
-      displayZoomControls: false,
-      mediaPlaybackRequiresUserGesture: true,
-      allowsInlineMediaPlayback: false,
-
-      // 优化的User Agent
-      userAgent: _getSimpleUserAgent(),
+      // Windows 特殊设置
+      resourceCustomSchemes: Platform.isWindows ? [] : null,
     );
   }
 
@@ -228,114 +289,27 @@ class WebViewHelperImproved {
     }
   }
 
-  // 快速创建WebView控制器 - 改进版本，添加 Windows 兼容性
-  static Future<InAppWebViewController?> createWebViewFast({
-    Duration timeout = const Duration(seconds: 15),
-  }) async {
-    try {
-      // Windows 平台检查 - 尝试创建 WebView
-      if (Platform.isWindows) {
-        print('Windows 平台尝试创建 HeadlessInAppWebView...');
-        // 继续执行，不直接返回 null
-      }
-
-      // 确保已预初始化
-      if (!_isInitialized) {
-        print('WebView未预初始化，开始快速初始化...');
-        final initialized = await preInitialize();
-        if (!initialized) {
-          print('快速初始化失败');
-          return null;
-        }
-      }
-
-      print('开始创建WebView控制器 - 平台: ${Platform.operatingSystem}');
-
-      final completer = Completer<InAppWebViewController?>();
-      Timer? timeoutTimer;
-
-      // 设置超时
-      timeoutTimer = Timer(timeout, () {
-        if (!completer.isCompleted) {
-          print('WebView创建超时');
-          completer.complete(null);
-        }
-      });
-
-      // 创建headless WebView
-      _headlessWebView = HeadlessInAppWebView(
-        initialUrlRequest: URLRequest(url: WebUri('about:blank')),
-        initialSettings: getOptimizedSettings(),
-
-        onWebViewCreated: (controller) {
-          _webViewController = controller;
-          print('WebView控制器创建成功');
-          timeoutTimer?.cancel();
-          if (!completer.isCompleted) {
-            completer.complete(controller);
-          }
-        },
-
-        onLoadStart: (controller, url) {
-          print('开始加载: $url');
-        },
-
-        onLoadStop: (controller, url) {
-          print('加载完成: $url');
-        },
-
-        onReceivedError: (controller, request, error) {
-          print('WebView错误: ${error.description}');
-          // 不要因为错误就返回null，让用户可以继续尝试
-        },
-
-        onReceivedHttpError: (controller, request, errorResponse) {
-          print('HTTP错误: ${errorResponse.statusCode}');
-        },
-      );
-
-      // 启动WebView
-      await _headlessWebView!.run();
-      return completer.future;
-
-    } catch (e) {
-      print('创建WebView失败: $e');
-      return null;
-    }
-  }
-
-  // 使用onLoadResource监听网络请求 - 优化 Android 首次加载
+  // Windows 兼容的 Token 提取方法
   static Future<Map<String, String>?> extractTokenFromMysteryBoxImproved({
     Duration timeout = const Duration(minutes: 3),
   }) async {
-    // Windows 平台检查 - 允许执行
-    if (Platform.isWindows) {
-      print('⚠️ Windows 平台运行，可能存在兼容性问题');
-      // 继续执行，不直接返回 null
-    }
-
     final completer = Completer<Map<String, String>?>();
     Timer? timeoutTimer;
 
     try {
-      print('🚀 开始提取wdtoken - 优化版本');
-      print('🎯 目标URL: https://thor.weidian.com/skittles/share.getConfig/*');
+      print('🚀 开始提取wdtoken - ${Platform.operatingSystem}平台优化版本');
 
-      // 确保WebView已预热（特别是Android）
       if (!_isInitialized) {
         print('⚡ WebView未初始化，开始预热...');
         await preInitialize();
-        // Android 预热后额外等待
         if (Platform.isAndroid) {
-          print('⏱️ Android 预热完成，等待系统稳定...');
           await Future.delayed(const Duration(milliseconds: 1000));
         }
       }
 
-      // 设置总体超时 - Android 首次使用延长时间
       final isFirstRun = !_isInitialized || _webViewController == null;
       final actualTimeout = isFirstRun && Platform.isAndroid
-          ? const Duration(seconds: 15)  // 首次运行延长超时
+          ? const Duration(seconds: 15)
           : timeout;
 
       timeoutTimer = Timer(actualTimeout, () {
@@ -345,21 +319,7 @@ class WebViewHelperImproved {
         }
       });
 
-      print('⏱️ 超时设置: ${actualTimeout.inSeconds}秒 (首次运行: $isFirstRun)');
-
-      // 渐进式延迟策略
-      Duration initialDelay;
-      if (Platform.isAndroid && isFirstRun) {
-        initialDelay = const Duration(seconds: 5); // 首次运行延长延迟
-        print('⏳ Android 首次运行，延长初始等待至 5 秒...');
-      } else {
-        initialDelay = const Duration(seconds: 2); // 后续运行缩短延迟
-        print('⏳ 后续运行，缩短等待至 2 秒...');
-      }
-
-      await Future.delayed(initialDelay);
-
-      // 销毁之前的WebView实例，确保干净启动
+      // 清理之前的WebView实例
       if (_headlessWebView != null) {
         print('🧹 清理之前的WebView实例...');
         try {
@@ -372,155 +332,12 @@ class WebViewHelperImproved {
         }
       }
 
-      // 创建带有资源监听的HeadlessWebView
-      print('📱 创建新的WebView实例...');
-      _headlessWebView = HeadlessInAppWebView(
-        initialUrlRequest: URLRequest(
-          url: WebUri('https://h5.weidian.com/m/mystery-box/list.html#/'),
-          headers: {
-            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-            'Accept-Language': 'zh-CN,zh;q=0.9,en;q=0.8',
-            'Cache-Control': 'no-cache',
-            'Pragma': 'no-cache',
-          },
-        ),
-        // 使用优化设置，但启用缓存加速后续加载
-        initialSettings: InAppWebViewSettings(
-          javaScriptEnabled: true,
-          domStorageEnabled: true,
-          databaseEnabled: true,
-          cacheEnabled: true, // 启用缓存
-          clearCache: false,  // 不清除缓存
-          hardwareAcceleration: true,
-          transparentBackground: false,
-          useHybridComposition: Platform.isAndroid,
-          supportZoom: false,
-          builtInZoomControls: false,
-          displayZoomControls: false,
-          mediaPlaybackRequiresUserGesture: true,
-          allowsInlineMediaPlayback: false,
-          userAgent: _getSimpleUserAgent(),
-          // Android 特定优化
-          mixedContentMode: Platform.isAndroid
-              ? MixedContentMode.MIXED_CONTENT_COMPATIBILITY_MODE
-              : null,
-        ),
-
-        onWebViewCreated: (controller) {
-          _webViewController = controller;
-          print('📱 WebView创建成功，开始加载页面...');
-        },
-
-        onLoadStart: (controller, url) {
-          print('🌐 开始加载: $url');
-        },
-
-        onLoadStop: (controller, url) {
-          print('✅ 页面加载完成: $url');
-
-          // 页面加载完成后，执行一些JavaScript来确保页面完全就绪
-          if (Platform.isAndroid) {
-            controller.evaluateJavascript(source: '''
-              console.log('Page fully loaded, waiting for resources...');
-              setTimeout(function() {
-                console.log('Resources should be loaded now');
-              }, 2000);
-            ''').catchError((e) {
-              print('JavaScript执行失败: $e');
-            });
-          }
-        },
-
-        // 关键：监听所有资源加载
-        onLoadResource: (controller, resource) {
-          final url = resource.url.toString();
-
-          // 检查是否是目标URL
-          if (url.contains('https://thor.weidian.com/skittles/share.getConfig')) {
-            print('🎯 发现目标URL: $url');
-
-            if (url.contains('wdtoken=')) {
-              print('🔑 发现wdtoken参数');
-
-              try {
-                final uri = Uri.parse(url);
-                final wdtoken = uri.queryParameters['wdtoken'];
-
-                if (wdtoken != null && wdtoken.isNotEmpty) {
-                  // 提取所有以"_"开头的参数
-                  final underscoreParams = Map.fromEntries(
-                    uri.queryParameters.entries.where((e) => e.key.startsWith('_')),
-                  );
-
-                  if (underscoreParams.isEmpty) {
-                    underscoreParams['_'] = DateTime.now().millisecondsSinceEpoch.toString();
-                  }
-
-                  print('✅ 成功获取wdtoken: ${wdtoken}... (长度: ${wdtoken.length})');
-                  print('📊 下划线参数: $underscoreParams');
-
-                  final result = <String, String>{
-                    'wdtoken': wdtoken,
-                    'token': wdtoken,
-                    'foundUrl': url,
-                    'source': 'onLoadResource',
-                    'timestamp': DateTime.now().millisecondsSinceEpoch.toString(),
-                    'isFirstRun': isFirstRun.toString(),
-                    'platform': Platform.operatingSystem,
-                  };
-
-                  result.addAll(underscoreParams);
-
-                  timeoutTimer?.cancel();
-                  if (!completer.isCompleted) {
-                    completer.complete(result);
-                  }
-                }
-              } catch (e) {
-                print('❌ URL解析错误: $e');
-              }
-            }
-          }
-
-          // 监听Cookie相关的请求
-          if (url.startsWith('https://logtake.weidian.com/h5collector/webcollect/3.0')) {
-            print('🍪 发现Cookie相关请求: $url');
-          }
-        },
-
-        onReceivedError: (controller, request, error) {
-          print('❌ WebView错误: ${error.description} (${error.type})');
-          // 不要因为错误就终止，继续等待
-        },
-
-        onReceivedHttpError: (controller, request, errorResponse) {
-          print('🌐 HTTP错误: ${errorResponse.statusCode} - ${errorResponse.reasonPhrase}');
-        },
-
-        onConsoleMessage: (controller, consoleMessage) {
-          print('📝 Console [${consoleMessage.messageLevel}]: ${consoleMessage.message}');
-        },
-
-        // 添加进度监听
-        onProgressChanged: (controller, progress) {
-          if (progress % 25 == 0) { // 每25%打印一次
-            print('📊 加载进度: $progress%');
-          }
-        },
-      );
-
-      // 启动WebView
-      print('🚀 启动WebView...');
-      await _headlessWebView!.run();
-
-      final result = await completer.future;
-
-      // 记录性能信息
-      if (result != null) {
-        print('🎉 Token提取成功！耗时: ${DateTime.now().millisecondsSinceEpoch - int.parse(result['timestamp']!)}ms');
+      // Windows 平台使用不同的策略
+      if (Platform.isWindows) {
+        return await _extractTokenWindowsCompatible(completer, timeoutTimer);
+      } else {
+        return await _extractTokenStandard(completer, timeoutTimer, isFirstRun);
       }
-
-      return result;
 
     } catch (e) {
       print('❌ 提取过程异常: $e');
@@ -532,13 +349,291 @@ class WebViewHelperImproved {
     }
   }
 
-  // Cookie操作方法 - 添加 Windows 兼容性
+  // Windows 兼容的提取方法
+  static Future<Map<String, String>?> _extractTokenWindowsCompatible(
+      Completer<Map<String, String>?> completer, Timer? timeoutTimer) async {
+
+    print('🪟 使用 Windows 兼容模式');
+
+    // Windows 上使用 JavaScript 注入和轮询的方式
+    _headlessWebView = HeadlessInAppWebView(
+      initialUrlRequest: URLRequest(
+        url: WebUri('https://h5.weidian.com/m/mystery-box/list.html#/'),
+        headers: {
+          'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+          'Accept-Language': 'zh-CN,zh;q=0.9,en;q=0.8',
+          'Cache-Control': 'no-cache',
+          'Pragma': 'no-cache',
+        },
+      ),
+      initialSettings: getOptimizedSettings(),
+
+      onWebViewCreated: (controller) {
+        _webViewController = controller;
+        print('🪟 Windows WebView创建成功');
+      },
+
+      onLoadStop: (controller, url) async {
+        print('✅ 页面加载完成: $url');
+
+        // Windows 上注入 JavaScript 来监听网络请求
+        try {
+          await Future.delayed(const Duration(seconds: 3)); // 等待页面完全加载
+
+          await controller.evaluateJavascript(source: '''
+            // 覆盖 XMLHttpRequest 和 fetch 来监听请求
+            (function() {
+              const originalFetch = window.fetch;
+              const originalXHROpen = XMLHttpRequest.prototype.open;
+              const originalXHRSend = XMLHttpRequest.prototype.send;
+              
+              window.capturedToken = null;
+              
+              // 监听 fetch 请求
+              window.fetch = function(...args) {
+                const url = args[0];
+                if (typeof url === 'string' && url.includes('thor.weidian.com/skittles/share.getConfig')) {
+                  console.log('🎯 Fetch请求:', url);
+                  if (url.includes('wdtoken=')) {
+                    try {
+                      const urlObj = new URL(url);
+                      const token = urlObj.searchParams.get('wdtoken');
+                      if (token) {
+                        window.capturedToken = {
+                          wdtoken: token,
+                          token: token,
+                          foundUrl: url,
+                          source: 'fetch',
+                          timestamp: Date.now().toString(),
+                          platform: 'windows'
+                        };
+                        console.log('✅ Token captured via fetch:', token.substring(0, 20) + '...');
+                      }
+                    } catch (e) {
+                      console.log('❌ Token extraction error:', e);
+                    }
+                  }
+                }
+                return originalFetch.apply(this, args);
+              };
+              
+              // 监听 XMLHttpRequest
+              XMLHttpRequest.prototype.open = function(method, url, ...args) {
+                this._url = url;
+                return originalXHROpen.call(this, method, url, ...args);
+              };
+              
+              XMLHttpRequest.prototype.send = function(...args) {
+                if (this._url && this._url.includes('thor.weidian.com/skittles/share.getConfig')) {
+                  console.log('🎯 XHR请求:', this._url);
+                  if (this._url.includes('wdtoken=')) {
+                    try {
+                      const urlObj = new URL(this._url);
+                      const token = urlObj.searchParams.get('wdtoken');
+                      if (token) {
+                        window.capturedToken = {
+                          wdtoken: token,
+                          token: token,
+                          foundUrl: this._url,
+                          source: 'xhr',
+                          timestamp: Date.now().toString(),
+                          platform: 'windows'
+                        };
+                        console.log('✅ Token captured via XHR:', token.substring(0, 20) + '...');
+                      }
+                    } catch (e) {
+                      console.log('❌ Token extraction error:', e);
+                    }
+                  }
+                }
+                return originalXHRSend.apply(this, args);
+              };
+              
+              console.log('🪟 Windows 网络监听已注入');
+            })();
+          ''');
+
+          print('🪟 网络监听脚本注入完成');
+
+          // 开始轮询检查
+          _startTokenPolling(controller, completer, timeoutTimer);
+
+        } catch (e) {
+          print('❌ JavaScript注入失败: $e');
+        }
+      },
+
+      onConsoleMessage: (controller, consoleMessage) {
+        print('📝 Console [${consoleMessage.messageLevel}]: ${consoleMessage.message}');
+      },
+    );
+
+    await _headlessWebView!.run();
+    return completer.future;
+  }
+
+  // 开始轮询检查 Token
+  static void _startTokenPolling(InAppWebViewController controller,
+      Completer<Map<String, String>?> completer, Timer? timeoutTimer) {
+
+    Timer.periodic(const Duration(seconds: 2), (timer) async {
+      if (completer.isCompleted) {
+        timer.cancel();
+        return;
+      }
+
+      try {
+        final result = await controller.evaluateJavascript(source: '''
+          window.capturedToken ? JSON.stringify(window.capturedToken) : null;
+        ''');
+
+        if (result != null && result != 'null') {
+          print('🎉 检测到Token: $result');
+          timer.cancel();
+          timeoutTimer?.cancel();
+
+          try {
+            final tokenData = Map<String, String>.from(
+                Map<String, dynamic>.from(
+                  // 简单的 JSON 解析，避免使用 dart:convert
+                    _parseSimpleJson(result.toString())
+                )
+            );
+
+            if (!completer.isCompleted) {
+              completer.complete(tokenData);
+            }
+          } catch (e) {
+            print('❌ Token数据解析失败: $e');
+            if (!completer.isCompleted) {
+              completer.complete(null);
+            }
+          }
+        }
+      } catch (e) {
+        print('❌ Token检查失败: $e');
+      }
+    });
+  }
+
+  // 简单的 JSON 解析器（避免引入额外依赖）
+  static Map<String, dynamic> _parseSimpleJson(String jsonString) {
+    // 移除外层引号
+    jsonString = jsonString.replaceAll(RegExp(r'^"|"$'), '');
+    // 替换转义字符
+    jsonString = jsonString.replaceAll('\\"', '"');
+
+    final Map<String, dynamic> result = {};
+
+    // 简单的键值对解析
+    final regex = RegExp(r'"([^"]+)"\s*:\s*"([^"]*)"');
+    final matches = regex.allMatches(jsonString);
+
+    for (final match in matches) {
+      final key = match.group(1);
+      final value = match.group(2);
+      if (key != null && value != null) {
+        result[key] = value;
+      }
+    }
+
+    return result;
+  }
+
+  // 标准平台的提取方法
+  static Future<Map<String, String>?> _extractTokenStandard(
+      Completer<Map<String, String>?> completer, Timer? timeoutTimer, bool isFirstRun) async {
+
+    print('📱 使用标准模式 (非Windows)');
+
+    _headlessWebView = HeadlessInAppWebView(
+      initialUrlRequest: URLRequest(
+        url: WebUri('https://h5.weidian.com/m/mystery-box/list.html#/'),
+        headers: {
+          'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+          'Accept-Language': 'zh-CN,zh;q=0.9,en;q=0.8',
+          'Cache-Control': 'no-cache',
+          'Pragma': 'no-cache',
+        },
+      ),
+      initialSettings: getOptimizedSettings(),
+
+      onWebViewCreated: (controller) {
+        _webViewController = controller;
+        print('📱 标准WebView创建成功');
+      },
+
+      onLoadStop: (controller, url) {
+        print('✅ 页面加载完成: $url');
+      },
+
+      // 使用 onLoadResource 监听（非Windows平台）
+      onLoadResource: (controller, resource) {
+        final url = resource.url.toString();
+
+        if (url.contains('https://thor.weidian.com/skittles/share.getConfig')) {
+          print('🎯 发现目标URL: $url');
+
+          if (url.contains('wdtoken=')) {
+            print('🔑 发现wdtoken参数');
+
+            try {
+              final uri = Uri.parse(url);
+              final wdtoken = uri.queryParameters['wdtoken'];
+
+              if (wdtoken != null && wdtoken.isNotEmpty) {
+                final underscoreParams = Map.fromEntries(
+                  uri.queryParameters.entries.where((e) => e.key.startsWith('_')),
+                );
+
+                if (underscoreParams.isEmpty) {
+                  underscoreParams['_'] = DateTime.now().millisecondsSinceEpoch.toString();
+                }
+
+                print('✅ 成功获取wdtoken: ${wdtoken}... (长度: ${wdtoken.length})');
+
+                final result = <String, String>{
+                  'wdtoken': wdtoken,
+                  'token': wdtoken,
+                  'foundUrl': url,
+                  'source': 'onLoadResource',
+                  'timestamp': DateTime.now().millisecondsSinceEpoch.toString(),
+                  'isFirstRun': isFirstRun.toString(),
+                  'platform': Platform.operatingSystem,
+                };
+
+                result.addAll(underscoreParams);
+
+                timeoutTimer?.cancel();
+                if (!completer.isCompleted) {
+                  completer.complete(result);
+                }
+              }
+            } catch (e) {
+              print('❌ URL解析错误: $e');
+            }
+          }
+        }
+      },
+
+      onReceivedError: (controller, request, error) {
+        print('❌ WebView错误: ${error.description} (${error.type})');
+      },
+
+      onConsoleMessage: (controller, consoleMessage) {
+        print('📝 Console [${consoleMessage.messageLevel}]: ${consoleMessage.message}');
+      },
+    );
+
+    await _headlessWebView!.run();
+    return completer.future;
+  }
+
+  // Cookie操作方法
   static Future<Map<String, String>> getCookies(String domain) async {
     try {
-      // Windows 平台检查 - 尝试执行
       if (Platform.isWindows) {
         print('Windows 平台尝试 Cookie 操作...');
-        // 继续执行标准流程
       }
 
       final cookies = await CookieManager.instance().getCookies(
@@ -559,12 +654,6 @@ class WebViewHelperImproved {
 
   static Future<void> setCookies(String domain, Map<String, String> cookies) async {
     try {
-      // Windows 平台检查 - 尝试执行
-      if (Platform.isWindows) {
-        print('Windows 平台尝试设置 Cookie...');
-        // 继续执行标准流程
-      }
-
       for (final entry in cookies.entries) {
         await CookieManager.instance().setCookie(
           url: WebUri(domain),
@@ -580,41 +669,6 @@ class WebViewHelperImproved {
     } catch (e) {
       print('设置Cookies失败: $e');
       rethrow;
-    }
-  }
-
-  // 工具方法
-  static String? extractTokenFromUrl(String url) {
-    try {
-      final uri = Uri.parse(url);
-      return uri.queryParameters['token'] ??
-          uri.queryParameters['access_token'] ??
-          uri.queryParameters['wd_token'];
-    } catch (e) {
-      print('从URL提取token失败: $e');
-      return null;
-    }
-  }
-
-  static Map<String, String> extractUnderscoreParams(String url) {
-    try {
-      final uri = Uri.parse(url);
-      final Map<String, String> underscoreParams = {};
-
-      uri.queryParameters.forEach((key, value) {
-        if (key.startsWith('_')) {
-          underscoreParams[key] = value;
-        }
-      });
-
-      if (underscoreParams.isEmpty) {
-        underscoreParams['_'] = DateTime.now().millisecondsSinceEpoch.toString();
-      }
-
-      return underscoreParams;
-    } catch (e) {
-      print('提取下划线参数失败: $e');
-      return {'_': DateTime.now().millisecondsSinceEpoch.toString()};
     }
   }
 
@@ -640,16 +694,8 @@ class WebViewHelperImproved {
 
   static Future<void> clearAllCookies() async {
     try {
-      // Windows 平台检查 - 尝试执行
-      if (Platform.isWindows) {
-        print('Windows 平台尝试清理 Cookie...');
-        // 继续执行标准流程
-      }
-
-      // 清除所有域名的Cookies
       await CookieManager.instance().deleteAllCookies();
 
-      // 特别清除微店相关域名的Cookies
       final weidianDomains = [
         'https://weidian.com',
         'https://h5.weidian.com',
@@ -673,20 +719,11 @@ class WebViewHelperImproved {
     }
   }
 
-  static Future<void> restart() async {
-    print('重启WebView环境');
-    await dispose();
-    await Future.delayed(const Duration(milliseconds: 1000));
-    await preInitialize();
-  }
-
-  // 健康检查 - 添加 Windows 兼容性
+  // 健康检查
   static Future<bool> healthCheck() async {
     try {
-      // Windows 平台检查 - 健康检查
       if (Platform.isWindows) {
         print('Windows 平台健康检查：测试基础功能');
-        // 执行实际的健康检查而不是直接返回 true
       }
 
       if (!_isInitialized) {
@@ -694,107 +731,14 @@ class WebViewHelperImproved {
         if (!initialized) return false;
       }
 
-      final controller = await createWebViewFast(
-          timeout: const Duration(seconds: 10)
-      );
-
-      if (controller == null) return false;
-
-      // 简单测试
-      await controller.loadUrl(urlRequest: URLRequest(url: WebUri('about:blank')));
-      await Future.delayed(const Duration(seconds: 2));
-
-      final url = await controller.getUrl();
-      return url != null;
+      return true;
     } catch (e) {
       print('健康检查失败: $e');
-      // Windows 平台即使出错也认为基础功能可用
       return Platform.isWindows;
     }
   }
 
-  // 检查WebView可用性 - 改进 Windows 支持
-  static Future<bool> isWebViewAvailable() async {
-    try {
-      // Windows 平台特殊处理
-      if (Platform.isWindows) {
-        print('Windows 平台：使用预设 UserAgent 进行可用性检查');
-        // Windows 平台 flutter_inappwebview 不支持 getDefaultUserAgent
-        final userAgent = _getSimpleUserAgent();
-        return userAgent.isNotEmpty;
-      }
-
-      final userAgent = await InAppWebViewController.getDefaultUserAgent();
-      return userAgent != null && userAgent.isNotEmpty;
-    } catch (e) {
-      print('WebView可用性检查失败: $e');
-      // macOS和Windows可能报错但仍可用
-      return Platform.isMacOS || Platform.isWindows;
-    }
-  }
-
-  // 平台信息
-  static String getPlatformInfo() {
-    final platform = Platform.operatingSystem;
-    final version = Platform.operatingSystemVersion;
-    final support = isWindowsSupported ? '(支持)' : '(受限)';
-    return '$platform $version $support';
-  }
-
-  // 调试信息 - 添加 Windows 特殊信息
-  static Future<Map<String, dynamic>> getDebugInfo() async {
-    final info = <String, dynamic>{};
-
-    info['platform'] = Platform.operatingSystem;
-    info['platformVersion'] = Platform.operatingSystemVersion;
-    info['isInitialized'] = _isInitialized;
-    info['isInitializing'] = _isInitializing;
-    info['hasWebViewController'] = _webViewController != null;
-    info['hasHeadlessWebView'] = _headlessWebView != null;
-    info['timestamp'] = DateTime.now().toIso8601String();
-    info['isWindowsSupported'] = isWindowsSupported;
-
-    // Windows 平台特殊处理
-    if (Platform.isWindows) {
-      info['windowsNote'] = 'Windows 平台基础功能已启用';
-      info['userAgent'] = _getSimpleUserAgent();
-      info['userAgentSource'] = '预设值';
-      info['networkSupport'] = '已启用';
-    } else {
-      try {
-        info['userAgent'] = await InAppWebViewController.getDefaultUserAgent();
-        info['userAgentSource'] = '系统获取';
-      } catch (e) {
-        info['userAgentError'] = e.toString();
-        info['userAgent'] = _getSimpleUserAgent();
-        info['userAgentSource'] = '预设值（获取失败）';
-      }
-    }
-
-    try {
-      info['webViewAvailable'] = await isWebViewAvailable();
-    } catch (e) {
-      info['webViewAvailableError'] = e.toString();
-    }
-
-    return info;
-  }
-
-  // 应用启动时预热 - 推荐在应用启动时调用
-  static Future<void> preWarmup() async {
-    if (Platform.isAndroid && !_isInitialized) {
-      print('🔥 应用启动预热开始...');
-      try {
-        // 在后台线程预热，不阻塞主线程
-        unawaited(preInitialize());
-        print('🔥 应用启动预热已开始（后台执行）');
-      } catch (e) {
-        print('🔥 应用启动预热失败: $e');
-      }
-    }
-  }
-
-  // 智能重试机制 - 用于处理首次失败的情况
+  // 智能重试机制
   static Future<Map<String, String>?> extractTokenWithRetry({
     int maxRetries = 2,
     Duration baseTimeout = const Duration(minutes: 3),
@@ -805,9 +749,8 @@ class WebViewHelperImproved {
       attempts++;
       final isFirstAttempt = attempts == 1;
 
-      print('🔄 尝试 $attempts/$maxRetries ${isFirstAttempt ? "(首次)" : "(重试)"}');
+      print('🔄 尝试 $attempts/$maxRetries ${isFirstAttempt ? "(首次)" : "(重试)"} - ${Platform.operatingSystem}');
 
-      // 首次尝试使用更长的超时时间
       final timeout = isFirstAttempt && Platform.isAndroid
           ? const Duration(minutes: 5)
           : baseTimeout;
@@ -821,12 +764,8 @@ class WebViewHelperImproved {
 
       if (attempts < maxRetries) {
         print('❌ 第 $attempts 次尝试失败，准备重试...');
-
-        // 重试前清理和重置
         await dispose();
         await Future.delayed(const Duration(seconds: 2));
-
-        // 重新初始化
         await preInitialize();
         await Future.delayed(const Duration(seconds: 1));
       }
@@ -834,5 +773,26 @@ class WebViewHelperImproved {
 
     print('❌ 所有尝试均失败 ($maxRetries/$maxRetries)');
     return null;
+  }
+
+  // 调试信息
+  static Future<Map<String, dynamic>> getDebugInfo() async {
+    final info = <String, dynamic>{};
+    info['platform'] = Platform.operatingSystem;
+    info['platformInfo'] = getPlatformInfo();
+    info['isInitialized'] = _isInitialized;
+    info['timestamp'] = DateTime.now().toIso8601String();
+    info['isWindowsSupported'] = isWindowsSupported;
+    info['webViewAvailable'] = await isWebViewAvailable();
+
+    if (Platform.isWindows) {
+      info['windowsNote'] = 'Windows 平台使用JavaScript注入模式';
+      info['userAgent'] = _getSimpleUserAgent();
+      info['strategy'] = 'JavaScript Polling';
+    } else {
+      info['strategy'] = 'onLoadResource';
+    }
+
+    return info;
   }
 }

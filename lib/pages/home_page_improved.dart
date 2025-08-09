@@ -91,7 +91,6 @@ class _HomePageImprovedState extends State<HomePageImproved> {
     });
 
     await _initializeWebView();
-    // 移除自动检查登录状态，改为用户手动检查
 
     setState(() {
       _isInitializing = false;
@@ -108,19 +107,18 @@ class _HomePageImprovedState extends State<HomePageImproved> {
       // 使用改进的预初始化方法，带有超时控制
       final initFuture = WebViewHelperImproved.preInitialize();
       final timeoutFuture = Future.delayed(const Duration(seconds: 5));
-      
+
       final result = await Future.any([
         initFuture.then((value) => {'success': true, 'supported': value}),
         timeoutFuture.then((_) => {'success': false, 'timeout': true}),
       ]);
 
       final platformInfo = WebViewHelperImproved.getPlatformInfo();
-      
-      bool isSupported = true; // 默认假设支持
+
+      bool isSupported = true;
       if (result['success'] == true) {
         isSupported = result['supported'] as bool;
       } else {
-        // 超时情况，假设支持但给出提示
         print('WebView预初始化超时，假设支持');
       }
 
@@ -128,7 +126,7 @@ class _HomePageImprovedState extends State<HomePageImproved> {
         _isWebViewSupported = isSupported;
         _isPreInitialized = isSupported;
         _platformInfo = platformInfo;
-        
+
         if (result['timeout'] == true) {
           _statusMessage = '⚠️ 预初始化超时，但可以正常使用\n$platformInfo\n'
               '建议：直接进行登录操作';
@@ -137,6 +135,8 @@ class _HomePageImprovedState extends State<HomePageImproved> {
         } else {
           _statusMessage = Platform.isMacOS
               ? '✅ macOS WebView预初始化完成 - $platformInfo'
+              : Platform.isWindows
+              ? '✅ Windows WebView初始化完成 - $platformInfo\n使用JavaScript注入模式'
               : '✅ WebView环境预初始化完成 - $platformInfo';
         }
       });
@@ -145,7 +145,7 @@ class _HomePageImprovedState extends State<HomePageImproved> {
 
     } catch (e) {
       setState(() {
-        _isWebViewSupported = true; // 假设支持，让用户尝试
+        _isWebViewSupported = true;
         _isPreInitialized = true;
         _statusMessage = '⚠️ 预初始化异常，但可以尝试使用: $e\n建议直接进行登录操作';
       });
@@ -165,7 +165,7 @@ class _HomePageImprovedState extends State<HomePageImproved> {
   Future<void> _checkLoginStatus() async {
     try {
       final isLoggedIn = await _authService.isLoggedIn();
-      
+
       if (!isLoggedIn) {
         setState(() {
           _isLoggedIn = false;
@@ -173,8 +173,7 @@ class _HomePageImprovedState extends State<HomePageImproved> {
         });
         return;
       }
-      
-      // 验证Cookie是否有效
+
       final isValid = await _authService.validateCookie();
 
       setState(() {
@@ -202,9 +201,8 @@ class _HomePageImprovedState extends State<HomePageImproved> {
     });
 
     try {
-      // 即使WebView支持状态不确定，也允许用户尝试
       setState(() {
-        _statusMessage = _isWebViewSupported 
+        _statusMessage = _isWebViewSupported
             ? '正在启动登录界面...'
             : '⚠️ WebView状态不确定，但允许尝试登录...';
       });
@@ -226,8 +224,7 @@ class _HomePageImprovedState extends State<HomePageImproved> {
         ),
       );
 
-      // 处理登录结果
-      if (result != null && result.isNotEmpty && result.length >4) {
+      if (result != null && result.isNotEmpty && result.length > 4) {
         final cookieString = result.entries
             .map((e) => '${e.key}=${e.value}')
             .join('; ');
@@ -237,7 +234,7 @@ class _HomePageImprovedState extends State<HomePageImproved> {
 
         setState(() {
           _isLoggedIn = true;
-          _isWebViewSupported = true; // 如果登录成功，说明WebView是可用的
+          _isWebViewSupported = true;
           _statusMessage = '✅ 登录成功！请点击"获取盲盒信息"继续操作\n'
               '- 已保存${result.length}个cookie\n'
               '- 总长度: ${cookieString.length}字符';
@@ -253,7 +250,6 @@ class _HomePageImprovedState extends State<HomePageImproved> {
           print('用户取消了登录');
         } else {
           print('登录失败，结果为空');
-          // 不显示错误，给用户重试机会
           setState(() {
             _statusMessage = '登录未成功，可以重试或检查网络连接';
           });
@@ -264,7 +260,6 @@ class _HomePageImprovedState extends State<HomePageImproved> {
       setState(() {
         _statusMessage = '⚠️ 登录过程中出现问题，但可以重试: $e';
       });
-      // 不阻止用户重试
     }
   }
 
@@ -276,17 +271,22 @@ class _HomePageImprovedState extends State<HomePageImproved> {
 
     setState(() {
       _isLoading = true;
-      _statusMessage = '正在获取盲盒信息，请稍候...';
+      _statusMessage = Platform.isWindows
+          ? '正在获取盲盒信息（Windows JavaScript模式）...'
+          : '正在获取盲盒信息，请稍候...';
     });
 
     try {
       setState(() {
-        _statusMessage = '正在访问盲盒页面并提取Token...';
+        _statusMessage = Platform.isWindows
+            ? '正在访问盲盒页面并使用JavaScript监听提取Token...'
+            : '正在访问盲盒页面并提取Token...';
       });
 
-      // 使用改进的Token提取方法
-      final tokenResult = await WebViewHelperImproved.extractTokenFromMysteryBoxImproved(
-        timeout: Duration(minutes: Platform.isMacOS ? 4 : 3),
+      // 使用带重试的Token提取方法，Windows和其他平台都适用
+      final tokenResult = await WebViewHelperImproved.extractTokenWithRetry(
+        maxRetries: Platform.isWindows ? 3 : 2, // Windows平台增加重试次数
+        baseTimeout: Duration(minutes: Platform.isMacOS ? 4 : Platform.isWindows ? 5 : 3),
       );
 
       if (tokenResult != null && tokenResult.isNotEmpty) {
@@ -294,12 +294,16 @@ class _HomePageImprovedState extends State<HomePageImproved> {
 
         print('Token提取结果: ${tokenResult.keys.join(', ')}');
         print('Token长度: ${token?.length ?? 0}');
-        print('Token来源: ${tokenResult['source']}');
+        print('Token来源: ${tokenResult['source']} (${tokenResult['platform']})');
 
         if (token != null && token.isNotEmpty && token != 'null') {
-          // 从URL中提取参数
-          final url = tokenResult['url'] ?? '';
-          final underscoreParams = WebViewHelperImproved.extractUnderscoreParams(url);
+          // 从结果中提取参数或使用默认参数
+          final foundUrl = tokenResult['foundUrl'] ?? '';
+          Map<String, String> underscoreParams = {};
+
+          if (foundUrl.isNotEmpty) {
+            underscoreParams = WebViewHelperImproved.extractUnderscoreParams(foundUrl);
+          }
 
           if (underscoreParams.isEmpty) {
             underscoreParams['_'] = DateTime.now().millisecondsSinceEpoch.toString();
@@ -310,13 +314,12 @@ class _HomePageImprovedState extends State<HomePageImproved> {
           setState(() {
             _canFetchItems = true;
             _statusMessage = '✅ 成功获取Token信息！\n'
-                // '- Token长度: ${token.length}\n'
-                // '- 来源: ${tokenResult['source']}\n'
-                // '- 参数数量: ${underscoreParams.length}\n'
+                '- 平台: ${tokenResult['platform']}\n'
+                '- 来源: ${tokenResult['source']}\n'
                 '现在可以获取盲盒记录了';
           });
 
-          _showSuccessSnackBar('成功获取Token信息 (${token}...)');
+          _showSuccessSnackBar('成功获取Token信息 (${token.substring(0, 20)}...)');
         } else {
           final errorDetails = StringBuffer();
           errorDetails.writeln('获取Token失败:');
@@ -326,12 +329,8 @@ class _HomePageImprovedState extends State<HomePageImproved> {
             errorDetails.writeln('- Token值为null');
           }
 
-          if (tokenResult['jsError_1'] != null) {
-            errorDetails.writeln('- JavaScript错误: ${tokenResult['jsError_1']}');
-          }
-
-          errorDetails.writeln('- 尝试次数: ${tokenResult['attempt'] ?? 'unknown'}');
-          errorDetails.writeln('- 页面URL: ${tokenResult['url'] ?? 'unknown'}');
+          errorDetails.writeln('- 平台: ${tokenResult['platform'] ?? 'unknown'}');
+          errorDetails.writeln('- 来源: ${tokenResult['source'] ?? 'unknown'}');
 
           _showErrorSnackBar('未能获取到有效的Token');
           setState(() {
@@ -345,7 +344,8 @@ class _HomePageImprovedState extends State<HomePageImproved> {
               '可能原因:\n'
               '- 网络连接问题\n'
               '- 登录状态已过期\n'
-              '- 页面加载超时';
+              '- 页面加载超时\n'
+              '${Platform.isWindows ? '- Windows平台JavaScript监听失败' : ''}';
         });
       }
     } catch (e) {
@@ -548,6 +548,41 @@ class _HomePageImprovedState extends State<HomePageImproved> {
                   foregroundColor: Colors.white,
                 ),
               ),
+              // Windows平台专用测试按钮
+              if (Platform.isWindows)
+                ElevatedButton.icon(
+                  onPressed: () async {
+                    setState(() {
+                      _statusMessage = '正在测试Windows JavaScript模式...';
+                    });
+
+                    try {
+                      final result = await WebViewHelperImproved.extractTokenFromMysteryBoxImproved();
+                      if (result != null) {
+                        _showSuccessSnackBar('Windows模式测试成功');
+                        setState(() {
+                          _statusMessage = '✅ Windows JavaScript模式测试成功\n来源: ${result['source']}';
+                        });
+                      } else {
+                        _showErrorSnackBar('Windows模式测试失败');
+                        setState(() {
+                          _statusMessage = '❌ Windows JavaScript模式测试失败';
+                        });
+                      }
+                    } catch (e) {
+                      _showErrorSnackBar('测试出现异常: $e');
+                      setState(() {
+                        _statusMessage = '❌ 测试异常: $e';
+                      });
+                    }
+                  },
+                  icon: const Icon(Icons.computer),
+                  label: const Text('Windows测试'),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.blue[600],
+                    foregroundColor: Colors.white,
+                  ),
+                ),
             ],
           ),
 
@@ -711,19 +746,19 @@ class _HomePageImprovedState extends State<HomePageImproved> {
                       ),
                     ),
                     if (_platformInfo.isNotEmpty) ...[
-                    const SizedBox(height: 8),
-                    Flexible(
-                      child: Text(
-                        '运行环境: $_platformInfo',
-                        style: TextStyle(
-                          color: textColor.withOpacity(0.8),
-                          fontSize: 9,
-
-                        ),maxLines: 3,
-                        overflow: TextOverflow.ellipsis,
+                      const SizedBox(height: 8),
+                      Flexible(
+                        child: Text(
+                          '运行环境: $_platformInfo',
+                          style: TextStyle(
+                            color: textColor.withOpacity(0.8),
+                            fontSize: 9,
+                          ),
+                          maxLines: 3,
+                          overflow: TextOverflow.ellipsis,
+                        ),
                       ),
-                    ),
-                  ],
+                    ],
                   ],
                 ),
               ),
@@ -743,7 +778,9 @@ class _HomePageImprovedState extends State<HomePageImproved> {
           ),
           const SizedBox(width: 12),
           Text(
-            '- 📱安卓用户：初次使用获取盲盒会超时。请尝试再次获取盲盒、刷新登录状态、退出重开',
+            Platform.isWindows
+                ? '- 🪟Windows用户：使用JavaScript注入模式获取Token，可能需要更长时间'
+                : '- 📱安卓用户：初次使用获取盲盒会超时。请尝试再次获取盲盒、刷新登录状态、退出重开',
             style: TextStyle(
               color: textColor.withOpacity(0.7),
               fontSize: 11,
@@ -762,17 +799,6 @@ class _HomePageImprovedState extends State<HomePageImproved> {
                 height: 1.4,
               ),
             ),
-          // if (_isPreInitialized && !_isInitializing) ...[
-          //   const SizedBox(height: 8),
-          //   Text(
-          //     '✅ WebView已预初始化，登录速度更快',
-          //     style: TextStyle(
-          //       color: MorandiGreenTheme.primary,
-          //       fontSize: 12,
-          //       fontWeight: FontWeight.w500,
-          //     ),
-          //   ),
-          // ],
         ],
       ),
     );
@@ -799,7 +825,7 @@ class _HomePageImprovedState extends State<HomePageImproved> {
             tooltip: '调试面板',
             onPressed: _toggleDebugPanel,
           ),
-          if (Platform.isMacOS && _isWebViewSupported)
+          if ((Platform.isMacOS || Platform.isWindows) && _isWebViewSupported)
             IconButton(
               icon: const Icon(Icons.refresh),
               tooltip: '重启WebView',
@@ -815,10 +841,10 @@ class _HomePageImprovedState extends State<HomePageImproved> {
               try {
                 // 1. 清除AuthService中的所有数据
                 await _authService.logout();
-                
+
                 // 2. 清除WebView数据和Cookie
                 await _clearWebViewData();
-                
+
                 // 3. 重置应用内的所有状态
                 setState(() {
                   _isLoggedIn = false;
@@ -828,10 +854,10 @@ class _HomePageImprovedState extends State<HomePageImproved> {
                   _currentPage = 0;
                   _statusMessage = '✅ 已退出登录，所有数据已清除';
                 });
-                
+
                 _showSuccessSnackBar('已退出登录');
                 print('登出完成：所有数据已清除，状态已重置');
-                
+
               } catch (e) {
                 print('登出过程出现异常: $e');
                 // 即使出现异常也要重置状态
@@ -854,7 +880,7 @@ class _HomePageImprovedState extends State<HomePageImproved> {
           // 调试面板
           if (_showDebugPanel)
             SliverToBoxAdapter(child: _buildDebugPanel()),
-          
+
           // 紧凑的操作面板
           SliverToBoxAdapter(
             child: Container(
@@ -881,11 +907,11 @@ class _HomePageImprovedState extends State<HomePageImproved> {
                             onPressed: (_isLoading || _isInitializing)
                                 ? null
                                 : () async {
-                                    setState(() {
-                                      _statusMessage = '正在检查登录状态...';
-                                    });
-                                    await _checkLoginStatus();
-                                  },
+                              setState(() {
+                                _statusMessage = '正在检查登录状态...';
+                              });
+                              await _checkLoginStatus();
+                            },
                             icon: const Icon(Icons.refresh, size: 18),
                             label: const Text('刷新登录状态'),
                             style: ElevatedButton.styleFrom(
@@ -921,7 +947,7 @@ class _HomePageImprovedState extends State<HomePageImproved> {
                               child: CircularProgressIndicator(strokeWidth: 2),
                             )
                                 : const Icon(Icons.card_giftcard, size: 18),
-                            label: const Text('②获取盲盒信息'),
+                            label: Text(Platform.isWindows ? '②获取盲盒信息(JS模式)' : '②获取盲盒信息'),
                             style: ElevatedButton.styleFrom(
                               backgroundColor: _canFetchItems ? MorandiGreenTheme.primary : MorandiGreenTheme.accent,
                               foregroundColor: Colors.white,
@@ -1005,75 +1031,75 @@ class _HomePageImprovedState extends State<HomePageImproved> {
           // 数据展示区域
           _mysteryBoxGroups.isEmpty
               ? SliverFillRemaining(
-                  child: Center(
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Icon(
-                          _isInitializing
-                              ? Icons.hourglass_empty
-                              : !_isWebViewSupported
-                              ? Icons.error_outline
-                              : _isPreInitialized
-                              ? Icons.inbox
-                              : Icons.pending,
-                          size: 64,
-                          color: Colors.grey[400],
-                        ),
-                        const SizedBox(height: 16),
-                        Text(
-                          _isInitializing
-                              ? '正在初始化应用...\n如果加载较慢，可以点击下方按钮跳过'
-                              : !_isWebViewSupported
-                              ? '当前平台WebView不可用\n无法使用完整功能\n\n${Platform.isMacOS ? '请确保macOS系统版本支持WebView' : '请检查系统WebView组件'}'
-                              : _isPreInitialized
-                              ? '暂无数据，请按照上方说明操作'
-                              : '正在准备WebView环境...',
-                          textAlign: TextAlign.center,
-                          style: TextStyle(
-                            color: Colors.grey[600],
-                            fontSize: 16,
-                            height: 1.4,
-                          ),
-                        ),
-                        if (_isInitializing) ...[
-                          const SizedBox(height: 24),
-                          ElevatedButton.icon(
-                            onPressed: _skipInitialization,
-                            icon: const Icon(Icons.skip_next, size: 20),
-                            label: const Text('跳过初始化'),
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: MorandiGreenTheme.accent,
-                              foregroundColor: Colors.white,
-                              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-                            ),
-                          ),
-                          const SizedBox(height: 8),
-                          Text(
-                            '跳过后可以直接使用登录功能',
-                            style: TextStyle(
-                              color: Colors.grey[500],
-                              fontSize: 12,
-                            ),
-                          ),
-                        ],
-                      ],
+            child: Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(
+                    _isInitializing
+                        ? Icons.hourglass_empty
+                        : !_isWebViewSupported
+                        ? Icons.error_outline
+                        : _isPreInitialized
+                        ? Icons.inbox
+                        : Icons.pending,
+                    size: 64,
+                    color: Colors.grey[400],
+                  ),
+                  const SizedBox(height: 16),
+                  Text(
+                    _isInitializing
+                        ? '正在初始化应用...\n如果加载较慢，可以点击下方按钮跳过'
+                        : !_isWebViewSupported
+                        ? '当前平台WebView不可用\n无法使用完整功能\n\n${Platform.isMacOS ? '请确保macOS系统版本支持WebView' : Platform.isWindows ? '请确保Windows系统支持WebView2' : '请检查系统WebView组件'}'
+                        : _isPreInitialized
+                        ? '暂无数据，请按照上方说明操作'
+                        : '正在准备WebView环境...',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      color: Colors.grey[600],
+                      fontSize: 16,
+                      height: 1.4,
                     ),
                   ),
-                )
+                  if (_isInitializing) ...[
+                    const SizedBox(height: 24),
+                    ElevatedButton.icon(
+                      onPressed: _skipInitialization,
+                      icon: const Icon(Icons.skip_next, size: 20),
+                      label: const Text('跳过初始化'),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: MorandiGreenTheme.accent,
+                        foregroundColor: Colors.white,
+                        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      '跳过后可以直接使用登录功能',
+                      style: TextStyle(
+                        color: Colors.grey[500],
+                        fontSize: 12,
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+          )
               : SliverList(
-                  delegate: SliverChildBuilderDelegate(
-                    (context, index) {
-                      return Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                        child: MysteryBoxGroupWidget(
-                          group: _mysteryBoxGroups[index],
-                        ),
-                      );
-                    },
-                    childCount: _mysteryBoxGroups.length,
+            delegate: SliverChildBuilderDelegate(
+                  (context, index) {
+                return Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  child: MysteryBoxGroupWidget(
+                    group: _mysteryBoxGroups[index],
                   ),
-                ),
+                );
+              },
+              childCount: _mysteryBoxGroups.length,
+            ),
+          ),
         ],
       ),
     );
