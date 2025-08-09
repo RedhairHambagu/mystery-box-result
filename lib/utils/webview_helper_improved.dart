@@ -456,7 +456,7 @@ class WebViewHelperImproved {
                     underscoreParams['_'] = DateTime.now().millisecondsSinceEpoch.toString();
                   }
 
-                  print('✅ 成功获取wdtoken: ${wdtoken.substring(0, 20)}... (长度: ${wdtoken.length})');
+                  print('✅ 成功获取wdtoken: ${wdtoken}... (长度: ${wdtoken.length})');
                   print('📊 下划线参数: $underscoreParams');
 
                   final result = <String, String>{
