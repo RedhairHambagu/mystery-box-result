@@ -4,7 +4,7 @@
 - 开发框架使用为Flutter跨平台客户端
 
 ## 使用
-### 源码 需安装好Flutter
+### 源码 **需自行安装好Flutter**
 ```bash
 git clone https://github.com/RedhairHambagu/mystery-box-result.git
 cd mystery-box-result
@@ -24,6 +24,9 @@ flutter run
 ![主界面](./screenshots/6.%20生成数据统计%20必要时点击下一页获取更多数据.png)
 ![统计界面](./screenshots/7.%20数据统计展示.png)
 
+## 已知bug
+- [ ] 已获取记录后，不重置数据直接获取记录 会产生重复数据
+- [ ] 安卓登录后token获取不刷新页面，重新获取token能正常用
 
 ## 写在最后
 - 源代码略有冗余，但整体项目打包体积不大不影响使用，暂不进行过度优化
