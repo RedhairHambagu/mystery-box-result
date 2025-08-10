@@ -410,8 +410,8 @@ class _HomePageImprovedState extends State<HomePageImproved> {
       final result = await TokenExtractor.extractTokenWithRetry(
         maxRetries: 2,
         baseTimeout: Platform.isAndroid 
-            ? const Duration(minutes: 1)
-            : const Duration(seconds: 30),
+            ? const Duration(seconds: 7)
+            : const Duration(seconds: 5),
       );
       
       if (result != null) {

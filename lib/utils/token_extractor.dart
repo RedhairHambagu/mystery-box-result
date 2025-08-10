@@ -9,7 +9,7 @@ class TokenExtractor {
 
   // 提取wdtoken的核心方法
   static Future<Map<String, String>?> extractToken({
-    Duration timeout = const Duration(minutes: 1),
+    Duration timeout = const Duration(seconds: 5),
   }) async {
     // Windows 平台检查 - 允许执行
     if (Platform.isWindows) {
@@ -35,7 +35,7 @@ class TokenExtractor {
       // 设置总体超时 - Android 首次使用延长时间
       final isFirstRun = _webViewController == null;
       final actualTimeout = isFirstRun && Platform.isAndroid
-          ? const Duration(seconds: 15)  // 首次运行延长超时
+          ? const Duration(seconds: 5)  // 首次运行延长超时
           : timeout;
 
       timeoutTimer = Timer(actualTimeout, () {
@@ -272,7 +272,7 @@ class TokenExtractor {
   // 智能重试机制
   static Future<Map<String, String>?> extractTokenWithRetry({
     int maxRetries = 2,
-    Duration baseTimeout = const Duration(minutes: 1),
+    Duration baseTimeout = const Duration(minutes: 2),
   }) async {
     int attempts = 0;
 
@@ -284,7 +284,7 @@ class TokenExtractor {
 
       // 首次尝试使用更长的超时时间
       final timeout = isFirstAttempt && Platform.isAndroid
-          ? const Duration(minutes: 1)
+          ? const Duration(seconds: 4)
           : baseTimeout;
 
       final result = await extractToken(timeout: timeout);
@@ -315,7 +315,7 @@ class TokenExtractor {
   static Future<Map<String, String>?> createVisualWebViewForToken({
     required Function(InAppWebViewController, Map<String, String>) onTokenExtracted,
     required Function() onCancel,
-    Duration timeout = const Duration(minutes: 1),
+    Duration timeout = const Duration(minutes: 3),
   }) async {
     try {
       print('🚀 创建可视化WebView获取Token');

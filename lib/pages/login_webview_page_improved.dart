@@ -402,7 +402,7 @@ class _LoginWebViewPageImprovedState extends State<LoginWebViewPageImproved> {
 
     // 启动TokenMonitor
     TokenMonitor.startMonitoring(
-      timeout: const Duration(minutes: 1),
+      timeout: const Duration(seconds: 3),
       enableFallback: true,
     );
 

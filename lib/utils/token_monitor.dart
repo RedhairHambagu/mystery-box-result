@@ -10,7 +10,7 @@ class TokenMonitor {
   static bool _isMonitoring = false;
   static int _attemptCount = 0;
   static const int maxAttempts = 3;
-  static const Duration fallbackDelay = Duration(seconds: 30);
+  static const Duration fallbackDelay = Duration(seconds: 15);
   static StreamController<Map<String, String>>? _tokenController;
   static Timer? _timeoutTimer;
 
@@ -21,7 +21,7 @@ class TokenMonitor {
 
   // 开始监听token请求，带自动回退机制
   static void startMonitoring({
-    Duration timeout = const Duration(minutes: 1),
+    Duration timeout = const Duration(minutes: 5),
     bool enableFallback = true,
   }) {
     if (_isMonitoring) {
@@ -160,7 +160,7 @@ class TokenMonitor {
 
     try {
       final result = await TokenExtractor.extractToken(
-        timeout: const Duration(minutes: 1),
+        timeout: const Duration(minutes: 2),
       );
 
       if (result != null) {

@@ -235,7 +235,7 @@ class WebViewHelperImproved {
 
   // 快速创建WebView控制器 - 改进版本，添加 Windows 兼容性
   static Future<InAppWebViewController?> createWebViewFast({
-    Duration timeout = const Duration(seconds: 15),
+    Duration timeout = const Duration(seconds: 5),
   }) async {
     try {
       // Windows 平台检查 - 尝试创建 WebView
@@ -439,7 +439,7 @@ class WebViewHelperImproved {
       }
 
       final controller = await createWebViewFast(
-          timeout: const Duration(seconds: 10)
+          timeout: const Duration(seconds: 8)
       );
 
       if (controller == null) return false;
